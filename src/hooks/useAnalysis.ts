@@ -1,15 +1,23 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "./useAuth";
 import type { PairDecisionSignal } from "@/lib/market/decision";
 import { CurrencyPair, FullAnalysis, TradeDenial, TradingAccount } from "@/types";
 
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
 interface AnalysisResult {
   analysis: FullAnalysis;
   denialResults: Record<string, { allowed: boolean; denials: TradeDenial[] }>;
   decisionSignal?: PairDecisionSignal;
+}
+
+interface CacheEntry {
+  pair: CurrencyPair;
+  result: AnalysisResult;
+  fetchedAt: number;
 }
 
 function deserializeAnalysis(analysis: FullAnalysis): FullAnalysis {
@@ -35,12 +43,28 @@ export function useAnalysis() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
+  const cache = useRef<CacheEntry | null>(null);
 
   const analyze = useCallback(
     async (pair: CurrencyPair, accounts: TradingAccount[], marketData?: string) => {
+      // Return cached result if same pair and within TTL
+      const now = Date.now();
+      if (
+        cache.current &&
+        cache.current.pair === pair &&
+        now - cache.current.fetchedAt < CACHE_TTL_MS
+      ) {
+        setResult(cache.current.result);
+        setCachedAt(cache.current.fetchedAt);
+        setError(null);
+        return cache.current.result;
+      }
+
       try {
         setLoading(true);
         setError(null);
+        setCachedAt(null);
 
         const res = await authFetch("/api/analysis", {
           method: "POST",
@@ -57,7 +81,10 @@ export function useAnalysis() {
           ...raw,
           analysis: deserializeAnalysis(raw.analysis),
         };
+
+        cache.current = { pair, result: data, fetchedAt: now };
         setResult(data);
+        setCachedAt(now);
         return data;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Analysis failed. Do not trade without analysis.";
@@ -72,9 +99,11 @@ export function useAnalysis() {
   );
 
   const clear = useCallback(() => {
+    cache.current = null;
     setResult(null);
+    setCachedAt(null);
     setError(null);
   }, []);
 
-  return { result, loading, error, analyze, clear };
+  return { result, loading, error, cachedAt, analyze, clear };
 }

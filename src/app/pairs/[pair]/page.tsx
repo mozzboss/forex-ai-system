@@ -142,7 +142,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const { authFetch } = useAuth();
   const pair = useMemo(() => getPairFromParam(params.pair), [params.pair]);
   const { accounts, loading: accountsLoading, error: accountsError, refetch } = useAccounts();
-  const { result, loading, error, analyze, clear } = useAnalysis();
+  const { result, loading, error, cachedAt, analyze, clear } = useAnalysis();
   const [marketNotes, setMarketNotes] = useState("");
   const [executionPrice, setExecutionPrice] = useState("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -634,6 +634,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
     }
 
     const entryPrice = Number(executionPrice);
+    const accountRiskCalc = analysis.riskPerAccount[account.id];
     const actionId = `${account.id}:create`;
     setActiveActionId(actionId);
 
@@ -649,9 +650,9 @@ export default function PairPage({ params }: { params: { pair: string } }) {
           entryPrice,
           stopLoss: analysis.tradeSetup.stopLoss,
           takeProfit: analysis.tradeSetup.takeProfit,
-          lotSize: 0,
-          riskAmount: 0,
-          riskRewardRatio: 0,
+          lotSize: accountRiskCalc?.lotSize ?? 0,
+          riskAmount: accountRiskCalc?.riskAmount ?? 0,
+          riskRewardRatio: accountRiskCalc?.riskRewardRatio ?? 0,
           status: "open",
           entryStatus: analysis.entryStatus.status,
           aiScore: analysis.finalDecision.score,
@@ -990,6 +991,44 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                   Clear
                 </Button>
               </div>
+
+              {loading ? (
+                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Analysis in progress</span>
+                  </div>
+                  <div className="grid gap-1.5 text-xs text-slate-400">
+                    {[
+                      "Fetching live market snapshot and economic calendar",
+                      "Running macro, sentiment, and session analysis",
+                      "Evaluating trade setup and entry conditions",
+                      "Calculating risk per account and running denial checks",
+                      "Generating final decision and reasoning",
+                    ].map((step, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-cyan-500/60">→</span>
+                        {step}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {cachedAt && !loading ? (
+                <div className="mt-4 flex items-center justify-between rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+                  <span className="text-xs text-yellow-300">
+                    Cached result from {new Date(cachedAt).toLocaleTimeString()} — re-run to refresh
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { clear(); runAnalysis(); }}
+                    className="ml-4 text-xs font-semibold text-yellow-200 underline underline-offset-2 hover:text-white"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              ) : null}
 
               {activeAccounts.length === 0 ? (
                 <p className="mt-3 text-sm text-red-300">
@@ -1421,7 +1460,11 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 </div>
               </Card>
 
-              <AnalysisDisplay analysis={analysis} denials={result?.denialResults} />
+              <AnalysisDisplay
+                analysis={analysis}
+                denials={result?.denialResults}
+                accountNames={Object.fromEntries(activeAccounts.map((a) => [a.id, a.name]))}
+              />
             </>
           ) : null}
         </div>

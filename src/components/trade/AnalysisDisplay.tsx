@@ -8,9 +8,10 @@ import { TradeDenialDisplay } from "./TradeDenialDisplay";
 interface AnalysisDisplayProps {
   analysis: FullAnalysis;
   denials?: Record<string, { allowed: boolean; denials: TradeDenial[] }>;
+  accountNames?: Record<string, string>;
 }
 
-export function AnalysisDisplay({ analysis, denials }: AnalysisDisplayProps) {
+export function AnalysisDisplay({ analysis, denials, accountNames }: AnalysisDisplayProps) {
   const {
     marketOverview,
     macro,
@@ -82,7 +83,9 @@ export function AnalysisDisplay({ analysis, denials }: AnalysisDisplayProps) {
         <Section title="Risk Per Account">
           {Object.entries(riskPerAccount).map(([accountId, risk]) => (
             <div key={accountId} className="mb-2 rounded-lg border border-white/5 bg-surface p-3">
-              <div className="mb-2 text-xs font-semibold text-gray-400">{accountId}</div>
+              <div className="mb-2 text-xs font-semibold text-gray-400">
+                {accountNames?.[accountId] ?? accountId}
+              </div>
               <div className="grid grid-cols-2 gap-y-1 text-xs">
                 <span className="text-gray-500">Lot Size</span>
                 <span className="text-right font-mono">{risk.lotSize}</span>
