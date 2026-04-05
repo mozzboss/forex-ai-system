@@ -88,10 +88,18 @@ export default function PerformancePage() {
   const headline = useMemo(() => {
     const closedTrades = filteredTrades.filter((trade) => trade.status === "closed" && typeof trade.pnl === "number");
     const pnl = closedTrades.reduce((total, trade) => total + (trade.pnl || 0), 0);
-    const wins = closedTrades.filter((trade) => (trade.pnl || 0) > 0).length;
-    const losses = closedTrades.filter((trade) => (trade.pnl || 0) < 0).length;
+    const winTrades = closedTrades.filter((trade) => (trade.pnl || 0) > 0);
+    const lossTrades = closedTrades.filter((trade) => (trade.pnl || 0) < 0);
+    const wins = winTrades.length;
+    const losses = lossTrades.length;
     const avgClosed = closedTrades.length > 0 ? pnl / closedTrades.length : 0;
     const winRate = closedTrades.length > 0 ? (wins / closedTrades.length) * 100 : null;
+    const avgWin = wins > 0 ? winTrades.reduce((sum, t) => sum + (t.pnl || 0), 0) / wins : null;
+    const avgLoss = losses > 0 ? lossTrades.reduce((sum, t) => sum + (t.pnl || 0), 0) / losses : null;
+    const expectancy =
+      winRate !== null && avgWin !== null && avgLoss !== null
+        ? (winRate / 100) * avgWin + (1 - winRate / 100) * avgLoss
+        : null;
 
     return {
       closedTrades: closedTrades.length,
@@ -100,6 +108,9 @@ export default function PerformancePage() {
       losses,
       avgClosed,
       winRate,
+      avgWin,
+      avgLoss,
+      expectancy,
     };
   }, [filteredTrades]);
 
@@ -192,10 +203,10 @@ export default function PerformancePage() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <HeadlinePill label="Closed Trades" value={`${headline.closedTrades}`} />
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+          <HeadlinePill label="Closed" value={`${headline.closedTrades}`} />
           <HeadlinePill
-            label="Realized P&L"
+            label="P&L"
             value={headline.closedTrades > 0 ? formatCurrency(headline.pnl) : "-"}
             tone={headline.pnl >= 0 ? "text-green-400" : "text-red-400"}
           />
@@ -206,6 +217,27 @@ export default function PerformancePage() {
           />
           <HeadlinePill label="Wins" value={`${headline.wins}`} tone="text-green-400" />
           <HeadlinePill label="Losses" value={`${headline.losses}`} tone="text-red-400" />
+          <HeadlinePill
+            label="Avg Win"
+            value={headline.avgWin !== null ? formatCurrency(headline.avgWin) : "-"}
+            tone="text-green-400"
+          />
+          <HeadlinePill
+            label="Avg Loss"
+            value={headline.avgLoss !== null ? formatCurrency(headline.avgLoss) : "-"}
+            tone="text-red-400"
+          />
+          <HeadlinePill
+            label="Expectancy"
+            value={headline.expectancy !== null ? formatCurrency(headline.expectancy) : "-"}
+            tone={
+              headline.expectancy === null
+                ? "text-slate-400"
+                : headline.expectancy > 0
+                  ? "text-green-400"
+                  : "text-red-400"
+            }
+          />
         </div>
       </section>
 

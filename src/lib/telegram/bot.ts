@@ -14,6 +14,7 @@ import {
   getTelegramConnectionStatus,
   linkTelegramChatByCode,
   listAccounts,
+  listTrades,
   saveDailyPlan,
 } from "@/lib/server/persistence";
 import { formatDailyPlanAlert } from "@/lib/telegram/service";
@@ -47,6 +48,37 @@ function getChatId(ctx: Context) {
   return typeof chatId === "number" || typeof chatId === "string" ? String(chatId) : null;
 }
 
+function normalizeBotText(value: string) {
+  return value.replace(/\r/g, "").replace(/\s+/g, " ").trim();
+}
+
+function truncateBotText(value: string, maxLength: number) {
+  const normalized = normalizeBotText(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3).trim()}...`;
+}
+
+function buildBotHeader(...parts: string[]) {
+  return parts.map((part) => normalizeBotText(part)).filter(Boolean).join(" | ");
+}
+
+function buildBotSection(title: string, lines: string[]) {
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return [`[${title.toUpperCase()}]`, ...lines.map((line) => `- ${normalizeBotText(line)}`)].join("\n");
+}
+
+function buildBotMetricRow(labelValues: Array<[string, string]>) {
+  return labelValues
+    .map(([label, value]) => `${label}: ${normalizeBotText(value)}`)
+    .join(" | ");
+}
+
 async function getLinkedUser(ctx: Context) {
   const chatId = getChatId(ctx);
 
@@ -73,14 +105,23 @@ function formatAccountsMessage(accounts: TradingAccount[]) {
   }
 
   return [
-    "Your accounts",
-    ...accounts.map((account, index) => {
+    buildBotHeader("ACCOUNTS", `${accounts.length} LINKED`),
+    ...accounts.map((account) => {
       return [
-        `${index + 1}. ${account.name} (${account.mode})`,
-        `Balance ${formatCurrency(account.balance)} | Equity ${formatCurrency(account.equity)}`,
-        `Risk ${account.riskPercent.toFixed(2)}% | Trades today ${account.currentDailyTrades}/${account.maxTradesPerDay}`,
-        `Daily loss ${formatCurrency(account.currentDailyLoss)} / ${formatCurrency(account.maxDailyLoss)}`,
-        `Open trades ${account.openTrades.length} | Loss streak ${account.lossesInARow}`,
+        buildBotHeader(account.name, account.mode.toUpperCase()),
+        buildBotMetricRow([
+          ["Bal", formatCurrency(account.balance)],
+          ["Eq", formatCurrency(account.equity)],
+        ]),
+        buildBotMetricRow([
+          ["Risk", `${account.riskPercent.toFixed(2)}%`],
+          ["Trades", `${account.currentDailyTrades}/${account.maxTradesPerDay}`],
+          ["Open", `${account.openTrades.length}`],
+        ]),
+        buildBotMetricRow([
+          ["Loss", `${formatCurrency(account.currentDailyLoss)}/${formatCurrency(account.maxDailyLoss)}`],
+          ["Streak", `${account.lossesInARow}`],
+        ]),
       ].join("\n");
     }),
   ].join("\n\n");
@@ -88,12 +129,15 @@ function formatAccountsMessage(accounts: TradingAccount[]) {
 
 function formatRulesMessage() {
   return [
-    "Trading rules",
-    "Funded: 0.25% to 0.5% risk, max 3 trades per day, stop after 2 losses, min 1:2 R:R, score 8+.",
-    "Personal: 1% to 2% risk, max 5 trades per day, stop after 3 losses, min 1:1.5 R:R, score 7+.",
-    "Never enter on WAIT or READY. Only CONFIRMED qualifies for execution.",
-    "No stop loss means no trade.",
-  ].join("\n");
+    buildBotHeader("RULES", "EXECUTION"),
+    buildBotSection("Funded", ["0.25%-0.5% risk | Max 3 trades | Stop after 2 losses | Min 1:2 RR | Score 8+"]),
+    buildBotSection("Personal", ["1%-2% risk | Max 5 trades | Stop after 3 losses | Min 1:1.5 RR | Score 7+"]),
+    buildBotSection("Non-negotiables", [
+      "WAIT and READY are still no-entry states.",
+      "Only CONFIRMED qualifies for execution.",
+      "No stop loss means no trade.",
+    ]),
+  ].join("\n\n");
 }
 
 function formatHelpMessage() {
@@ -103,6 +147,7 @@ function formatHelpMessage() {
     "/pair EURUSD — quick bias check and score for a pair",
     "/risk BALANCE RISK% ENTRY SL TP PAIR DIR — position size calculator",
     "/accounts — your account balances, daily limits, and loss streaks",
+    "/trades — open and pending positions with entry, SL, TP, and risk",
     "/status — today's risk usage across all accounts",
     "/news [PAIR] — upcoming economic events (optionally filtered by pair)",
     "/plan — today's daily plan (generates one if none exists yet)",
@@ -148,6 +193,125 @@ function formatStatusMessage(accounts: TradingAccount[]) {
   }
 
   return lines.join("\n");
+}
+
+function formatCompactHelpMessage() {
+  return [
+    buildBotHeader("FOREX AI", "COMMANDS"),
+    buildBotSection("Checks", [
+      "/pair EURUSD - quick bias + score",
+      "/risk BALANCE RISK% ENTRY SL TP PAIR DIR - position size",
+      "/news [PAIR] - upcoming events",
+      "/plan - today's daily plan",
+    ]),
+    buildBotSection("Accounts", [
+      "/accounts - balances, limits, streaks",
+      "/trades - open and pending positions",
+      "/status - today's risk usage",
+      "/rules - funded and personal rules",
+    ]),
+    buildBotSection("Journal", [
+      "/journal your note - save a quick note",
+      "/help - show commands",
+    ]),
+    buildBotSection("Execution flow", [
+      "WAIT -> READY -> CONFIRMED -> INVALID",
+      "Only CONFIRMED qualifies for execution.",
+    ]),
+  ].join("\n\n");
+}
+
+function formatCompactStatusMessage(accounts: TradingAccount[]) {
+  if (accounts.length === 0) {
+    return "No accounts found. Create one in Settings first.";
+  }
+
+  const blocks: string[] = [buildBotHeader("STATUS", "TODAY")];
+
+  for (const account of accounts) {
+    const tradesLeft = Math.max(account.maxTradesPerDay - account.currentDailyTrades, 0);
+    const dailyLossRemaining = Math.max(account.maxDailyLoss - account.currentDailyLoss, 0);
+    const drawdownUsed = account.balance - account.equity;
+    const drawdownPct = account.maxDrawdown > 0
+      ? ((drawdownUsed / account.maxDrawdown) * 100).toFixed(1)
+      : "0.0";
+
+    const flags: string[] = [];
+    if (tradesLeft === 0) flags.push("Daily trade limit reached");
+    if (account.currentDailyLoss >= account.maxDailyLoss) flags.push("Daily loss limit reached");
+    if (account.lossesInARow >= 2) flags.push(`${account.lossesInARow} losses in a row`);
+    if (drawdownUsed >= account.maxDrawdown * 0.8) flags.push("Drawdown near limit");
+
+    blocks.push(
+      [
+        buildBotHeader(account.name, account.mode.toUpperCase()),
+        buildBotMetricRow([
+          ["Trades", `${account.currentDailyTrades}/${account.maxTradesPerDay}`],
+          ["Left", `${tradesLeft}`],
+          ["Streak", `${account.lossesInARow}`],
+        ]),
+        buildBotMetricRow([
+          ["Loss", `${formatCurrency(account.currentDailyLoss)}/${formatCurrency(account.maxDailyLoss)}`],
+          ["Left", formatCurrency(dailyLossRemaining)],
+        ]),
+        buildBotMetricRow([
+          ["DD", `${formatCurrency(drawdownUsed)}/${formatCurrency(account.maxDrawdown)}`],
+          ["Used", `${drawdownPct}%`],
+        ]),
+        flags.length > 0
+          ? buildBotSection("Flags", flags.map((flag) => truncateBotText(flag, 60)))
+          : buildBotSection("Flags", ["Clear"]),
+      ].join("\n")
+    );
+  }
+
+  return blocks.join("\n\n");
+}
+
+function formatTradesMessage(trades: ReturnType<typeof mapTradeForBot>[]) {
+  if (trades.length === 0) {
+    return "No open or pending trades right now. Good time to plan the next session.";
+  }
+
+  const header = buildBotHeader("OPEN TRADES", `${trades.length}`);
+
+  const rows = trades.map((trade) => {
+    const pnlLine = typeof trade.pnl === "number"
+      ? buildBotMetricRow([["Unrealized", formatCurrency(trade.pnl)]])
+      : null;
+
+    return [
+      buildBotHeader(trade.pair, trade.direction.toUpperCase(), trade.status.toUpperCase()),
+      buildBotMetricRow([
+        ["Entry", trade.entryPrice.toFixed(5)],
+        ["SL", trade.stopLoss.toFixed(5)],
+        ["TP", trade.takeProfit.toFixed(5)],
+      ]),
+      buildBotMetricRow([
+        ["Lot", trade.lotSize.toFixed(2)],
+        ["Risk", formatCurrency(trade.riskAmount)],
+        ["Score", `${trade.aiScore}/10`],
+      ]),
+      pnlLine,
+    ].filter(Boolean).join("\n");
+  });
+
+  return [header, ...rows].join("\n\n");
+}
+
+function mapTradeForBot(trade: {
+  pair: string;
+  direction: string;
+  status: string;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  lotSize: number;
+  riskAmount: number;
+  aiScore: number;
+  pnl?: number;
+}) {
+  return trade;
 }
 
 async function replyWithStartMessage(ctx: Context, linked = false) {
@@ -233,12 +397,18 @@ if (bot) {
       const result = await quickPairCheck(pair);
       await ctx.reply(
         [
-          `${pair} quick check`,
-          `Bias: ${result.bias}`,
-          `Score: ${result.score}/10`,
-          result.summary,
-          result.score >= 7 ? "Worth watching, but still wait for CONFIRMED status." : "Not ready. No trade is fine.",
-        ].join("\n")
+          buildBotHeader(pair, "QUICK CHECK"),
+          buildBotMetricRow([
+            ["Bias", result.bias],
+            ["Score", `${result.score}/10`],
+          ]),
+          buildBotSection("Read", [truncateBotText(result.summary, 140)]),
+          buildBotSection("Do now", [
+            result.score >= 7
+              ? "Worth watching, but still wait for CONFIRMED status."
+              : "Not ready. No trade is fine.",
+          ]),
+        ].join("\n\n")
       );
     } catch (error) {
       console.error("Telegram pair command failed:", error);
@@ -278,16 +448,22 @@ if (bot) {
 
     await ctx.reply(
       [
-        `Risk calculation for ${pair}`,
-        `Direction: ${input.direction}`,
-        `Risk: ${formatCurrency(result.riskAmount)}`,
-        `Pips to SL: ${formatPips(result.pipDistance)}`,
-        `Lot size: ${formatLotSize(result.lotSize)}`,
-        `Max loss: ${formatCurrency(result.maxLoss)}`,
-        `Max profit: ${formatCurrency(result.maxProfit)}`,
-        `R:R: ${formatRR(result.riskRewardRatio)}`,
-        result.denial ? `Denied: ${result.denial}` : "Valid on position sizing only. Strategy still needs confirmation.",
-      ].join("\n")
+        buildBotHeader(pair, "RISK CHECK", input.direction),
+        buildBotMetricRow([
+          ["Risk", formatCurrency(result.riskAmount)],
+          ["Pips", formatPips(result.pipDistance)],
+          ["Lot", formatLotSize(result.lotSize)],
+        ]),
+        buildBotMetricRow([
+          ["Max loss", formatCurrency(result.maxLoss)],
+          ["Max profit", formatCurrency(result.maxProfit)],
+          ["RR", formatRR(result.riskRewardRatio)],
+        ]),
+        buildBotSection(
+          "Status",
+          [result.denial ? `Denied: ${result.denial}` : "Valid on position sizing only. Strategy still needs confirmation."]
+        ),
+      ].join("\n\n")
     );
   });
 
@@ -306,7 +482,7 @@ if (bot) {
   });
 
   bot.command("help", async (ctx) => {
-    await ctx.reply(formatHelpMessage());
+    await ctx.reply(formatCompactHelpMessage());
   });
 
   bot.command("status", async (ctx) => {
@@ -316,7 +492,24 @@ if (bot) {
     }
 
     const accounts = await listAccounts(user.id);
-    await ctx.reply(formatStatusMessage(accounts));
+    await ctx.reply(formatCompactStatusMessage(accounts));
+  });
+
+  bot.command("trades", async (ctx) => {
+    const user = await getLinkedUser(ctx);
+    if (!user) {
+      return;
+    }
+
+    try {
+      const { trades } = await listTrades(user.id, { status: "open" });
+      const pending = await listTrades(user.id, { status: "pending" });
+      const all = [...trades, ...pending.trades];
+      await ctx.reply(formatTradesMessage(all.map(mapTradeForBot)));
+    } catch (error) {
+      console.error("Telegram trades command failed:", error);
+      await ctx.reply("Could not load open trades. Check the web dashboard.");
+    }
   });
 
   bot.command("news", async (ctx) => {

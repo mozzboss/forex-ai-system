@@ -2,14 +2,18 @@
 
 import { useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import { JournalEntryCard } from "@/components/journal";
 import { Button, Card, CardHeader } from "@/components/ui";
-import { useJournal } from "@/hooks";
+import { useJournal, useTrades } from "@/hooks";
+import { formatCurrency } from "@/lib/utils";
 
 const ENTRY_TYPES = ["trade", "review", "lesson", "plan"] as const;
 
 export default function JournalPage() {
   const { entries, loading, error, fetchEntries, addEntry } = useJournal();
+  const { trades } = useTrades();
   const [selectedType, setSelectedType] = useState<(typeof ENTRY_TYPES)[number]>("review");
   const [content, setContent] = useState("");
   const [mistakes, setMistakes] = useState("");
@@ -17,6 +21,20 @@ export default function JournalPage() {
   const [disciplineScore, setDisciplineScore] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState<"all" | (typeof ENTRY_TYPES)[number]>("all");
+
+  const todaySession = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const todayTrades = trades.filter((t) => new Date(t.createdAt) >= start);
+    const closed = todayTrades.filter((t) => t.status === "closed" && typeof t.pnl === "number");
+    const open = todayTrades.filter((t) => t.status === "open");
+    const denied = todayTrades.filter((t) => t.status === "denied");
+    const pnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const avgScore = todayTrades.length > 0
+      ? (todayTrades.reduce((sum, t) => sum + t.aiScore, 0) / todayTrades.length).toFixed(1)
+      : null;
+    return { total: todayTrades.length, closed: closed.length, open: open.length, denied: denied.length, pnl, avgScore };
+  }, [trades]);
 
   const stats = useMemo(() => {
     const scoredEntries = entries.filter((entry) => typeof entry.disciplineScore === "number");
@@ -102,6 +120,46 @@ export default function JournalPage() {
       {error ? (
         <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
+        </div>
+      ) : null}
+
+      {todaySession.total > 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Today&apos;s Session</div>
+              <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-300">
+                <span><span className="font-semibold text-white">{todaySession.total}</span> trades logged</span>
+                <span><span className="font-semibold text-white">{todaySession.open}</span> open</span>
+                <span><span className="font-semibold text-white">{todaySession.denied}</span> denied</span>
+                {todaySession.closed > 0 ? (
+                  <span className={todaySession.pnl >= 0 ? "font-semibold text-green-400" : "font-semibold text-red-400"}>
+                    {formatCurrency(todaySession.pnl)} realized
+                  </span>
+                ) : null}
+                {todaySession.avgScore ? (
+                  <span><span className="font-semibold text-white">{todaySession.avgScore}</span> avg AI score</span>
+                ) : null}
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSelectedType("review");
+                const parts = [
+                  `Session: ${todaySession.total} trades (${todaySession.open} open, ${todaySession.denied} denied).`,
+                  todaySession.closed > 0 ? `Realized P&L: ${formatCurrency(todaySession.pnl)}.` : "",
+                  todaySession.avgScore ? `Avg AI score: ${todaySession.avgScore}/10.` : "",
+                  "",
+                  "What happened? What did I do well? Where did discipline slip?",
+                ].filter(Boolean).join(" ");
+                setContent(parts);
+              }}
+            >
+              Pre-fill from session
+            </Button>
+          </div>
         </div>
       ) : null}
 

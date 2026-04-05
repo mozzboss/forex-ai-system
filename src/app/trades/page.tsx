@@ -59,7 +59,7 @@ function buildTradeExportRows(trades: Trade[], accountNames: Map<string, string>
 }
 
 export default function TradesPage() {
-  const { accounts, loading: accountsLoading, error: accountsError } = useAccounts();
+  const { accounts, loading: accountsLoading, error: accountsError, refetch: refetchAccounts } = useAccounts();
   const { trades, loading, error, fetchTrades, refetch } = useTrades();
   const [statusFilter, setStatusFilter] = useState<TradeStatus | "all">("all");
   const [accountFilter, setAccountFilter] = useState("all");
@@ -356,7 +356,7 @@ export default function TradesPage() {
         accounts={accounts}
         refreshing={loading || accountsLoading}
         onRefresh={async () => {
-          await refetch();
+          await Promise.all([refetch(), refetchAccounts()]);
         }}
       />
 

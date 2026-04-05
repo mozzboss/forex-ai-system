@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/trades", label: "Trades", icon: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
   { href: "/mt-import", label: "MT Import", icon: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" },
   { href: "/performance", label: "Performance", icon: "M4 18h16M6 15l3-3 3 2 5-6 1 1" },
+  { href: "/review", label: "EOD Review", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
   { href: "/journal", label: "Journal", icon: "M4 19V5a2 2 0 012-2h8a2 2 0 012 2v14l-6-3-6 3z" },
   { href: "/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33" },
 ];
