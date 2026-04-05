@@ -11,10 +11,18 @@ import { CurrencyPair, TradingAccount } from "@/types";
 import { analysisRequestSchema } from "@/lib/validation/api";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // POST /api/analysis
 // Body: { pair: string, accounts: TradingAccount[], marketData?: string }
 export async function POST(req: NextRequest) {
+  // During static build, avoid calling external APIs/DB
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json(
+      { error: "Analysis unavailable during static build" },
+      { status: 503 }
+    );
+  }
   try {
     const userId = await requireAppUserId(req);
     const body = await req.json();

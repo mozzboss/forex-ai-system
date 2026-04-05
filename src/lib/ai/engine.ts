@@ -16,9 +16,13 @@ const CACHE_TTL_MINUTES = 15;
 // Uses Claude to analyze markets and make disciplined decisions.
 // ============================================================
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+function getAnthropicClient() {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
+  return new Anthropic({ apiKey: key });
+}
 
 const SYSTEM_PROMPT = `You are a senior Forex trading analyst applying institutional-grade discipline. Your job is to analyze a currency pair and produce a structured, honest decision — not to find a trade.
 
@@ -91,6 +95,7 @@ export async function analyzeMarket(
 
   const prompt = buildAnalysisPrompt(pair, accounts, marketData);
 
+  const anthropic = getAnthropicClient();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
@@ -115,6 +120,7 @@ export async function analyzeMarket(
 export async function quickPairCheck(
   pair: CurrencyPair
 ): Promise<{ bias: string; score: number; summary: string }> {
+  const anthropic = getAnthropicClient();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,

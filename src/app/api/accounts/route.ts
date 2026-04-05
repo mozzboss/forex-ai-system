@@ -6,9 +6,15 @@ import { accountRouteDeps } from "@/lib/server/route-deps";
 import { accountActionSchema } from "@/lib/validation/api";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // GET /api/accounts
 export async function GET(req: NextRequest) {
+  // During Vercel static build, short-circuit to avoid DB/auth failures
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ accounts: [] });
+  }
+
   try {
     const userId = await accountRouteDeps.requireAppUserId(req);
     const accounts = await accountRouteDeps.listAccounts(userId);
