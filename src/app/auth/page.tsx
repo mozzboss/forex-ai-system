@@ -111,6 +111,7 @@ export default function AuthPage() {
                 value={name}
                 onChange={setName}
                 placeholder="Disciplined Trader"
+                onEnter={submit}
               />
             ) : null}
 
@@ -120,6 +121,7 @@ export default function AuthPage() {
               value={email}
               onChange={setEmail}
               placeholder="you@example.com"
+              onEnter={submit}
             />
             <Field
               label="Password"
@@ -127,6 +129,7 @@ export default function AuthPage() {
               value={password}
               onChange={setPassword}
               placeholder="Minimum 6 characters"
+              onEnter={submit}
             />
           </div>
 
@@ -200,12 +203,14 @@ function Field({
   onChange,
   placeholder,
   type = "text",
+  onEnter,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
+  onEnter?: () => void;
 }) {
   return (
     <label className="block">
@@ -214,6 +219,9 @@ function Field({
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && onEnter) onEnter();
+        }}
         placeholder={placeholder}
         className="mt-1 w-full rounded-xl border border-white/10 bg-surface px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
       />

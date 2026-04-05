@@ -62,6 +62,7 @@ model User {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email          String   @unique
   name           String?
+  trackedPairs   String[] @default(["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD", "XAUUSD"])
   telegramChatId String?  @unique
   telegramLinkCode String? @unique
   telegramLinkCodeExpiresAt DateTime?
@@ -69,10 +70,11 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  accounts   TradingAccount[]
-  trades     Trade[]
-  journal    JournalEntry[]
-  dailyPlans DailyPlan[]
+  accounts     TradingAccount[]
+  trades       Trade[]
+  journal      JournalEntry[]
+  dailyPlans   DailyPlan[]
+  analysisLogs AnalysisLog[]
 }
 
 model TradingAccount {
@@ -208,4 +210,18 @@ model AnalysisCache {
 
   @@index([pair])
   @@index([expiresAt])
+}
+
+model AnalysisLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  pair      String
+  result    String   // JSON-serialized FullAnalysis
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, pair])
+  @@index([userId, createdAt])
 }

@@ -51,22 +51,31 @@ async function notifyRiskAlert(userId: string, accountId: string) {
     const account = await tradeRouteDeps.getAccountSnapshot(userId, accountId);
     if (!account) return;
 
+    const streakLimit = account.mode === "funded" ? 2 : 3;
     const maxTradesReached = account.currentDailyTrades >= account.maxTradesPerDay;
-    const dailyLossBreach =
-      account.maxDailyLoss > 0 && account.currentDailyLoss >= account.maxDailyLoss;
-    const dailyLossWarning =
-      account.maxDailyLoss > 0 && account.currentDailyLoss >= account.maxDailyLoss * 0.8;
+    const dailyLossBreach = account.maxDailyLoss > 0 && account.currentDailyLoss >= account.maxDailyLoss;
+    const dailyLossWarning = account.maxDailyLoss > 0 && account.currentDailyLoss >= account.maxDailyLoss * 0.8 && !dailyLossBreach;
+    const streakBreach = account.lossesInARow >= streakLimit;
+    const drawdownUsed = account.balance - account.equity;
+    const drawdownBreach = account.maxDrawdown > 0 && drawdownUsed >= account.maxDrawdown;
+    const drawdownWarning = account.maxDrawdown > 0 && drawdownUsed >= account.maxDrawdown * 0.7 && !drawdownBreach;
 
     const reasons: string[] = [];
     if (maxTradesReached) {
-      reasons.push(`Daily trade cap reached (${account.currentDailyTrades}/${account.maxTradesPerDay}).`);
+      reasons.push(`Daily trade cap reached (${account.currentDailyTrades}/${account.maxTradesPerDay}). No more trades today.`);
     }
     if (dailyLossBreach) {
-      reasons.push("Daily loss limit hit. Stop trading and de-risk.");
+      reasons.push(`Daily loss limit hit ($${account.currentDailyLoss.toFixed(2)} / $${account.maxDailyLoss.toFixed(2)}). Stop trading now.`);
     } else if (dailyLossWarning) {
-      reasons.push(
-        `Daily loss at ${account.currentDailyLoss.toFixed(2)} against cap ${account.maxDailyLoss.toFixed(2)}.`
-      );
+      reasons.push(`Daily loss at $${account.currentDailyLoss.toFixed(2)} — approaching cap of $${account.maxDailyLoss.toFixed(2)}.`);
+    }
+    if (streakBreach) {
+      reasons.push(`${account.lossesInARow} losses in a row on ${account.mode} account. Rules require stopping.`);
+    }
+    if (drawdownBreach) {
+      reasons.push(`Max drawdown hit ($${drawdownUsed.toFixed(2)} / $${account.maxDrawdown.toFixed(2)}). Close positions and stop.`);
+    } else if (drawdownWarning) {
+      reasons.push(`Drawdown at $${drawdownUsed.toFixed(2)} — approaching limit of $${account.maxDrawdown.toFixed(2)}.`);
     }
 
     if (reasons.length === 0) return;

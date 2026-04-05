@@ -10,14 +10,17 @@ import {
   createJournalEntry,
   findUserByTelegramChatId,
   getDailyPlanContext,
+  getEndOfDayReviewContext,
   getSavedDailyPlan,
+  getSavedEndOfDayReview,
   getTelegramConnectionStatus,
   linkTelegramChatByCode,
   listAccounts,
   listTrades,
   saveDailyPlan,
 } from "@/lib/server/persistence";
-import { formatDailyPlanAlert } from "@/lib/telegram/service";
+import { formatDailyPlanAlert, formatEndOfDaySummaryAlert } from "@/lib/telegram/service";
+import { generateEndOfDayReview } from "@/lib/ai/end-of-day";
 import { formatCurrency, formatLotSize, formatPips, formatRR } from "@/lib/utils";
 import type { CurrencyPair, RiskInput, TradingAccount } from "@/types";
 
@@ -152,6 +155,7 @@ function formatHelpMessage() {
     "/news [PAIR] — upcoming economic events (optionally filtered by pair)",
     "/plan — today's daily plan (generates one if none exists yet)",
     "/journal your note — log a quick journal entry from Telegram",
+    "/review — today's end-of-day review (generates if none saved yet)",
     "/rules — funded and personal account rule summary",
     "/help — show this message",
     "",
@@ -212,6 +216,7 @@ function formatCompactHelpMessage() {
     ]),
     buildBotSection("Journal", [
       "/journal your note - save a quick note",
+      "/review - today's EOD review",
       "/help - show commands",
     ]),
     buildBotSection("Execution flow", [
@@ -564,6 +569,29 @@ if (bot) {
     });
 
     await ctx.reply("Journal note saved. Keep logging the process, not just the outcome.");
+  });
+
+  bot.command("review", async (ctx) => {
+    const user = await getLinkedUser(ctx);
+    if (!user) return;
+
+    const saved = await getSavedEndOfDayReview(user.id);
+
+    if (saved) {
+      await ctx.reply(formatEndOfDaySummaryAlert(saved));
+      return;
+    }
+
+    // No saved review — generate one now
+    await ctx.reply("No review saved for today yet. Generating one now...");
+    try {
+      const context = await getEndOfDayReviewContext(user.id);
+      const generated = await generateEndOfDayReview(context);
+      await ctx.reply(formatEndOfDaySummaryAlert(generated));
+    } catch (error) {
+      console.error("Telegram /review generation failed:", error);
+      await ctx.reply("Review generation failed. Open the EOD Review page in the web app after your session.");
+    }
   });
 
   bot.command("plan", async (ctx) => {

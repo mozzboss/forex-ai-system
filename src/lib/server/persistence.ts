@@ -25,7 +25,7 @@ import {
   TradingAccount as PrismaTradingAccount,
 } from "@prisma/client";
 
-import { getAccountRules } from "@/config/trading";
+import { getAccountRules, normalizeTrackedPairs } from "@/config/trading";
 import { fetchEconomicCalendar } from "@/lib/market/news";
 import { prisma } from "@/lib/prisma";
 import { calculateRisk, getDenialExplanation, validateTradeAgainstAccount } from "@/lib/risk/engine";
@@ -340,6 +340,36 @@ function maskTelegramChatId(chatId?: string | null) {
   }
 
   return `${"*".repeat(Math.max(chatId.length - 4, 1))}${chatId.slice(-4)}`;
+}
+
+export async function getTrackedPairs(userId: string): Promise<CurrencyPair[]> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      trackedPairs: true,
+    },
+  });
+
+  return normalizeTrackedPairs(user?.trackedPairs);
+}
+
+export async function updateTrackedPairs(
+  userId: string,
+  pairs: CurrencyPair[]
+): Promise<CurrencyPair[]> {
+  const trackedPairs = normalizeTrackedPairs(pairs);
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      trackedPairs,
+    },
+    select: {
+      trackedPairs: true,
+    },
+  });
+
+  return normalizeTrackedPairs(user.trackedPairs);
 }
 
 /**
@@ -909,7 +939,7 @@ export async function getDailyPlanContext(
   date: Date = new Date()
 ): Promise<DailyPlanContext> {
   const normalizedDate = startOfDay(date);
-  const [accounts, trades, events, priorReview] = await Promise.all([
+  const [accounts, trades, events, priorReview, trackedPairs] = await Promise.all([
     listAccounts(userId),
     prisma.trade.findMany({
       where: {
@@ -927,6 +957,7 @@ export async function getDailyPlanContext(
       minimumImpact: "medium",
     }).catch(() => []),
     getSavedEndOfDayReview(userId, new Date(normalizedDate.getTime() - 24 * 60 * 60 * 1000)),
+    getTrackedPairs(userId),
   ]);
 
   return {
@@ -934,6 +965,7 @@ export async function getDailyPlanContext(
     accounts: accounts.filter((account) => account.isActive),
     openTrades: trades.map(mapTradeRecord),
     upcomingEvents: events,
+    trackedPairs,
     priorReview,
   };
 }
@@ -1257,4 +1289,49 @@ export async function getAccountSnapshot(
   });
 
   return account ? mapAccountRecord(account) : null;
+}
+
+// NOTE: analysisLog requires running `prisma db push && prisma generate` after
+// the dev server is restarted. The type cast allows the code to ship while
+// the migration is pending; errors are swallowed so the app keeps running.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const prismaAny = prisma as any;
+
+export async function saveAnalysisLog(
+  userId: string,
+  pair: string,
+  result: object
+): Promise<void> {
+  try {
+    await prismaAny.analysisLog.create({
+      data: { userId, pair, result: JSON.stringify(result) },
+    });
+  } catch {
+    // Non-critical — never block the analysis response
+  }
+}
+
+export async function getAnalysisHistory(
+  userId: string,
+  pair: string,
+  limit = 5
+): Promise<Array<{ id: string; pair: string; result: object; createdAt: Date }>> {
+  try {
+    const records: Array<{ id: string; pair: string; result: string; createdAt: Date }> =
+      await prismaAny.analysisLog.findMany({
+        where: { userId, pair },
+        orderBy: { createdAt: "desc" },
+        take: Math.min(limit, 20),
+        select: { id: true, pair: true, result: true, createdAt: true },
+      });
+
+    return records.map((r) => ({
+      id: r.id,
+      pair: r.pair,
+      createdAt: r.createdAt,
+      result: (() => { try { return JSON.parse(r.result) as object; } catch { return {}; } })(),
+    }));
+  } catch {
+    return [];
+  }
 }

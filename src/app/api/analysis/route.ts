@@ -5,7 +5,7 @@ import { formatNewsContextForAnalysis, fetchEconomicCalendar, getPairCurrencies 
 import { fetchMarketSnapshot, formatMarketContextForAnalysis } from "@/lib/market/prices";
 import { shouldAllowTrade } from "@/lib/market/denial";
 import { AuthenticationError, requireAppUserId } from "@/lib/server/auth";
-import { getTelegramAlertTarget } from "@/lib/server/persistence";
+import { getAnalysisHistory, getTelegramAlertTarget, saveAnalysisLog } from "@/lib/server/persistence";
 import { formatDecisionSignalAlert, sendTelegramMessage } from "@/lib/telegram/service";
 import { CurrencyPair, TradingAccount } from "@/types";
 import { analysisRequestSchema } from "@/lib/validation/api";
@@ -84,6 +84,31 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
     message: "Analysis failed. Capital protection mode: do not trade.",
     status,
   };
+}
+
+// GET /api/analysis?pair=EURUSD&limit=5
+export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ history: [] });
+  }
+  try {
+    const userId = await requireAppUserId(req);
+    const { searchParams } = new URL(req.url);
+    const pair = searchParams.get("pair") as CurrencyPair | null;
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "5", 10), 20);
+
+    if (!pair) {
+      return NextResponse.json({ error: "pair is required" }, { status: 400 });
+    }
+
+    const history = await getAnalysisHistory(userId, pair, limit);
+    return NextResponse.json({ history });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+    return NextResponse.json({ history: [] });
+  }
 }
 
 // POST /api/analysis
@@ -167,6 +192,7 @@ export async function POST(req: NextRequest) {
     }
 
     recordAnalysisRun(userId, pair);
+    void saveAnalysisLog(userId, pair, analysis);
     return NextResponse.json({
       analysis,
       denialResults,

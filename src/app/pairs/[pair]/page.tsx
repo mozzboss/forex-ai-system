@@ -155,6 +155,12 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const [marketError, setMarketError] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
   const [liveSync, setLiveSync] = useState(false);
+  const [analysisHistory, setAnalysisHistory] = useState<Array<{
+    id: string;
+    pair: string;
+    createdAt: Date;
+    result: FullAnalysis;
+  }>>([]);
   const [riskDefaults, setRiskDefaults] = useState<{
     balance?: number;
     riskPercent?: number;
@@ -356,13 +362,31 @@ export default function PairPage({ params }: { params: { pair: string } }) {
     setAutoCalcTick((tick) => tick + 1);
   }, [autoLevels, liveSync]);
 
+  useEffect(() => {
+    if (!pair) return;
+    authFetch(`/api/analysis?pair=${pair}&limit=5`)
+      .then((res) => res.ok ? res.json() : { history: [] })
+      .then((data) => {
+        const entries = (data.history || []) as Array<{ id: string; pair: string; result: object; createdAt: string }>;
+        setAnalysisHistory(
+          entries.map((e) => ({
+            id: e.id,
+            pair: e.pair,
+            createdAt: new Date(e.createdAt),
+            result: e.result as FullAnalysis,
+          }))
+        );
+      })
+      .catch(() => {});
+  }, [pair, cachedAt, authFetch]);
+
   if (!pair) {
     return (
       <div className="p-6">
         <Card className="max-w-2xl">
           <CardHeader>Invalid Pair</CardHeader>
           <p className="text-sm text-gray-400">
-            This pair is not in the tracked watchlist. Return to the pairs page and choose a supported symbol.
+            This symbol is not in the supported pair universe. Return to the pairs page and choose a valid pair.
           </p>
           <Link href="/pairs" className="mt-4 inline-flex text-sm text-brand-400 hover:text-brand-300">
             Back to all pairs
@@ -1466,6 +1490,41 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 accountNames={Object.fromEntries(activeAccounts.map((a) => [a.id, a.name]))}
               />
             </>
+          ) : null}
+
+          {analysisHistory.length > 0 ? (
+            <Card>
+              <CardHeader className="mb-3">Analysis History</CardHeader>
+              <p className="mb-4 text-sm text-gray-400">Last {analysisHistory.length} analyses run for {pair}.</p>
+              <div className="space-y-2">
+                {analysisHistory.map((entry) => {
+                  const decision = entry.result?.finalDecision?.decision;
+                  const score = entry.result?.finalDecision?.score;
+                  const bias = entry.result?.marketOverview?.bias;
+                  return (
+                    <div key={entry.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-surface px-4 py-3">
+                      <div className="text-xs text-slate-400">
+                        {entry.createdAt.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {bias ? <span className="text-xs capitalize text-slate-300">{bias}</span> : null}
+                        {score != null ? <span className="text-xs text-slate-400">{score}/10</span> : null}
+                        {decision ? (
+                          <span className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                            decision === "TAKE_TRADE" ? "bg-green-500/15 text-green-300"
+                              : decision === "DENY" ? "bg-red-500/15 text-red-300"
+                              : "bg-yellow-500/15 text-yellow-300"
+                          )}>
+                            {decision.replace("_", " ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           ) : null}
         </div>
       ) : null}
