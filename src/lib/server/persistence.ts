@@ -133,6 +133,7 @@ function mapTradeRecord(record: PrismaTrade): AppTrade {
   return {
     id: record.id,
     accountId: record.accountId,
+    externalRef: record.externalRef ?? undefined,
     pair: record.pair as CurrencyPair,
     direction: record.direction as TradeDirection,
     setupType: record.setupType as SetupType,

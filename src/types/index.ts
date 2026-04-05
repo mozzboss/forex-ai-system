@@ -103,6 +103,7 @@ export type TradeStatus = "pending" | "open" | "closed" | "cancelled" | "denied"
 export interface Trade {
   id: string;
   accountId: string;
+  externalRef?: string;
   pair: CurrencyPair;
   direction: TradeDirection;
   setupType: SetupType;

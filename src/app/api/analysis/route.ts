@@ -13,6 +13,24 @@ import { analysisRequestSchema } from "@/lib/validation/api";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Server-side per-user+pair cooldown — prevents burning API credits on rapid re-runs.
+// Stored in process memory; clears on restart (intentional — restarts are rare, sessions are not).
+const ANALYSIS_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes
+const analysisCooldowns = new Map<string, number>();
+
+function checkAnalysisCooldown(userId: string, pair: string): { blocked: boolean; retryAfterSecs: number } {
+  const key = `${userId}:${pair}`;
+  const last = analysisCooldowns.get(key);
+  if (!last) return { blocked: false, retryAfterSecs: 0 };
+  const elapsed = Date.now() - last;
+  if (elapsed >= ANALYSIS_COOLDOWN_MS) return { blocked: false, retryAfterSecs: 0 };
+  return { blocked: true, retryAfterSecs: Math.ceil((ANALYSIS_COOLDOWN_MS - elapsed) / 1000) };
+}
+
+function recordAnalysisRun(userId: string, pair: string) {
+  analysisCooldowns.set(`${userId}:${pair}`, Date.now());
+}
+
 function getAnalysisErrorDetails(error: unknown): { message: string; status: number } {
   const status = typeof (error as { status?: unknown })?.status === "number"
     ? (error as { status: number }).status
@@ -96,6 +114,14 @@ export async function POST(req: NextRequest) {
       marketData?: string;
     };
 
+    const cooldown = checkAnalysisCooldown(userId, pair);
+    if (cooldown.blocked) {
+      return NextResponse.json(
+        { error: `Analysis ran recently. Wait ${cooldown.retryAfterSecs}s before re-running ${pair}.` },
+        { status: 429 }
+      );
+    }
+
     let enrichedMarketData = marketData;
 
     try {
@@ -140,6 +166,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    recordAnalysisRun(userId, pair);
     return NextResponse.json({
       analysis,
       denialResults,

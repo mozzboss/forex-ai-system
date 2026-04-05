@@ -102,19 +102,30 @@ function parseCsv(raw: string): MtRow[] {
   return lines.slice(1).map((line) => {
     const cols = parseCsvLine(line);
     return {
-      externalRef: get(cols, "externalRef") || get(cols, "Ticket") || get(cols, "ticket"),
+      // Our template + MT4 Ticket + MT5 Order (ticket)
+      externalRef: get(cols, "externalRef") || get(cols, "Order") || get(cols, "Ticket") || get(cols, "ticket"),
+      // Must be supplied manually — neither MT4 nor MT5 export includes the account name in the file
       accountName: get(cols, "accountName") || get(cols, "Account") || get(cols, "account"),
+      // MT5: Symbol | MT4: Symbol
       pair: get(cols, "pair") || get(cols, "Symbol") || get(cols, "symbol"),
+      // MT5: Type (buy/sell) | MT4: Type
       direction: get(cols, "direction") || get(cols, "Type") || get(cols, "type"),
+      // Infer closed if not set (MT5 history exports are all closed)
       status: get(cols, "status") || get(cols, "Status") || "closed",
-      entryPrice: get(cols, "entryPrice") || get(cols, "Open Price") || get(cols, "open_price"),
+      // MT5: Price | MT4: Open Price
+      entryPrice: get(cols, "entryPrice") || get(cols, "Price") || get(cols, "Open Price") || get(cols, "open_price"),
       stopLoss: get(cols, "stopLoss") || get(cols, "S/L") || get(cols, "sl"),
       takeProfit: get(cols, "takeProfit") || get(cols, "T/P") || get(cols, "tp"),
+      // MT5: Volume | MT4: Lots
       lotSize: get(cols, "lotSize") || get(cols, "Volume") || get(cols, "volume") || get(cols, "Lots"),
-      openedAt: get(cols, "openedAt") || get(cols, "Open Time") || get(cols, "open_time"),
+      // MT5: Time (open time) | MT4: Open Time
+      openedAt: get(cols, "openedAt") || get(cols, "Time") || get(cols, "Open Time") || get(cols, "open_time"),
+      // MT5 doesn't export close time in the default history CSV — leave blank if absent
       closedAt: get(cols, "closedAt") || get(cols, "Close Time") || get(cols, "close_time"),
+      // MT5: Profit | MT4: Profit
       pnl: get(cols, "pnl") || get(cols, "Profit") || get(cols, "profit"),
       pipsPnl: get(cols, "pipsPnl") || get(cols, "Pips") || get(cols, "pips"),
+      // MT5: Comment | MT4: Comment
       notes: get(cols, "notes") || get(cols, "Comment") || get(cols, "comment"),
     };
   });
@@ -497,6 +508,34 @@ export default function MtImportPage() {
                 ))}
               </div>
             )}
+          </Card>
+
+          <Card>
+            <CardHeader>Format Guide</CardHeader>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-xl border border-white/5 bg-surface p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-cyan-300">MT5 History CSV</div>
+                <p className="mt-2 text-gray-400 text-xs leading-5">
+                  In MT5: <span className="text-white">History → right-click → Save as Report → Detailed (CSV)</span>.
+                  Columns auto-mapped: <span className="font-mono text-slate-300">Order, Symbol, Type, Volume, Price, S/L, T/P, Profit, Time, Comment</span>.
+                  Add an <span className="font-mono text-slate-300">accountName</span> column manually — MT5 does not include the account name in the export.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-surface p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-yellow-300">MT4 History CSV</div>
+                <p className="mt-2 text-gray-400 text-xs leading-5">
+                  In MT4: <span className="text-white">Account History → right-click → Save as Report</span> (then open in Excel and export as CSV).
+                  Columns auto-mapped: <span className="font-mono text-slate-300">Ticket, Symbol, Type, Lots, Open Price, S/L, T/P, Profit, Open Time, Close Time, Comment</span>.
+                  Add <span className="font-mono text-slate-300">accountName</span> manually.
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/5 bg-surface p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Template format</div>
+                <p className="mt-2 text-gray-400 text-xs leading-5">
+                  Download the template above for the canonical column names. Use it if you want to build the CSV from scratch or from a spreadsheet.
+                </p>
+              </div>
+            </div>
           </Card>
 
           <Card>

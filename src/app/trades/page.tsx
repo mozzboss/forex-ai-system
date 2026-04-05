@@ -385,8 +385,15 @@ export default function TradesPage() {
               <div key={trade.id} className="rounded-xl border border-white/5 bg-surface p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
-                    <div className="text-lg font-semibold text-white">
-                      {trade.pair} {trade.direction}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-semibold text-white">
+                        {trade.pair} {trade.direction}
+                      </span>
+                      {trade.externalRef ? (
+                        <span className="rounded bg-slate-700/60 px-1.5 py-0.5 text-xs font-mono text-slate-400">
+                          #{trade.externalRef}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                       <span>{account?.name || "Unknown account"}</span>

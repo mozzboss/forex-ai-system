@@ -1,9 +1,46 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { calculateRisk } from "@/lib/risk/engine";
-import { getAccountRules } from "@/config/trading";
 import type { CurrencyPair, TradeDirection, TradeStatus } from "@/types";
+
+export interface MtImportDeps {
+  findAccount: (
+    userId: string,
+    position: { accountId?: string; accountName?: string },
+    cache: Map<string, { id: string; mode: string; balance: number; equity: number; riskPercent: number }>
+  ) => Promise<{ id: string; mode: string; balance: number; equity: number; riskPercent: number } | null>;
+  findExistingTrade: (externalRef: string) => Promise<{ id: string; status: string } | null>;
+  createTrade: (data: Prisma.TradeCreateInput) => Promise<void>;
+  updateTrade: (externalRef: string, data: Prisma.TradeUncheckedUpdateInput) => Promise<void>;
+  updateAccountBalance: (accountId: string, pnl: number) => Promise<void>;
+}
+
+const defaultDeps: MtImportDeps = {
+  findAccount: defaultFindAccount,
+  findExistingTrade: async (externalRef) => {
+    const trade = await prisma.trade.findUnique({
+      where: { externalRef },
+      select: { id: true, status: true },
+    });
+    return trade ? { id: trade.id, status: trade.status } : null;
+  },
+  createTrade: async (data) => {
+    await prisma.trade.create({ data });
+  },
+  updateTrade: async (externalRef, data) => {
+    await prisma.trade.update({ where: { externalRef }, data });
+  },
+  updateAccountBalance: async (accountId, pnl) => {
+    const rounded = Math.round(pnl * 100) / 100;
+    await prisma.tradingAccount.update({
+      where: { id: accountId },
+      data: {
+        balance: { increment: rounded },
+        equity: { increment: rounded },
+      },
+    });
+  },
+};
 
 interface MtPosition {
   externalRef: string;
@@ -23,7 +60,11 @@ interface MtPosition {
   notes?: string;
 }
 
-export async function importMtPositions(userId: string, positions: MtPosition[]) {
+export async function importMtPositions(
+  userId: string,
+  positions: MtPosition[],
+  deps: MtImportDeps = defaultDeps
+) {
   const results = {
     imported: 0,
     updated: 0,
@@ -35,7 +76,7 @@ export async function importMtPositions(userId: string, positions: MtPosition[])
 
   for (const position of positions) {
     try {
-      const account = await findAccount(userId, position, accountCache);
+      const account = await deps.findAccount(userId, position, accountCache);
       if (!account) {
         results.skipped += 1;
         results.errors.push(`Account not found for MT position ${position.externalRef}`);
@@ -75,20 +116,21 @@ export async function importMtPositions(userId: string, positions: MtPosition[])
         closedAt: position.closedAt ? new Date(position.closedAt) : undefined,
       };
 
-      const existing = await prisma.trade.findUnique({
-        where: { externalRef: position.externalRef },
-        select: { id: true },
-      });
+      const existing = await deps.findExistingTrade(position.externalRef);
+      const wasAlreadyClosed = existing?.status === "closed";
 
       if (existing) {
-        await prisma.trade.update({
-          where: { externalRef: position.externalRef },
-          data: tradeData,
-        });
+        await deps.updateTrade(position.externalRef, tradeData as Prisma.TradeUncheckedUpdateInput);
         results.updated += 1;
       } else {
-        await prisma.trade.create({ data: tradeData });
+        await deps.createTrade(tradeData);
         results.imported += 1;
+      }
+
+      // Sync account balance when a closed trade with P&L is first imported or just became closed
+      const isNowClosed = position.status === "closed" && typeof position.pnl === "number";
+      if (isNowClosed && !wasAlreadyClosed) {
+        await deps.updateAccountBalance(account.id, position.pnl!);
       }
     } catch (error) {
       results.skipped += 1;
@@ -101,9 +143,9 @@ export async function importMtPositions(userId: string, positions: MtPosition[])
   return results;
 }
 
-async function findAccount(
+async function defaultFindAccount(
   userId: string,
-  position: MtPosition,
+  position: { accountId?: string; accountName?: string },
   cache: Map<string, { id: string; mode: string; balance: number; equity: number; riskPercent: number }>
 ) {
   const cacheKey = position.accountId || position.accountName || "";
@@ -128,9 +170,7 @@ async function findAccount(
     },
   });
 
-  if (!account) {
-    return null;
-  }
+  if (!account) return null;
 
   const normalized = {
     id: account.id,
