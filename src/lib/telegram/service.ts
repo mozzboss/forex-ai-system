@@ -66,6 +66,76 @@ function formatSignedCurrency(value: number) {
   return `${sign}$${Math.abs(value).toFixed(2)}`;
 }
 
+function buildTelegramHeader(...parts: string[]) {
+  return parts.map((part) => normalizeTelegramText(part)).filter(Boolean).join(" | ");
+}
+
+function normalizeTelegramText(value: string) {
+  return value.replace(/\r/g, "").replace(/\s+/g, " ").trim();
+}
+
+function truncateTelegramText(value: string, maxLength: number) {
+  const normalized = normalizeTelegramText(value);
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const clipped = normalized.slice(0, maxLength - 3);
+  const boundaries = [". ", "; ", ", ", " "]
+    .map((boundary) => clipped.lastIndexOf(boundary))
+    .filter((index) => index > maxLength * 0.55);
+  const boundary = boundaries.length > 0 ? Math.max(...boundaries) : -1;
+  const safe = boundary >= 0 ? clipped.slice(0, boundary) : clipped;
+
+  return `${safe.trim()}...`;
+}
+
+function humanizeTelegramValue(value: string) {
+  return normalizeTelegramText(value).replace(/_/g, " ");
+}
+
+function extractTelegramPoints(value: string, maxPoints = 2, maxLength = 180) {
+  const rawParts = value
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => part.split(/(?<=[.!?])\s+(?=[A-Z0-9])/));
+
+  const points: string[] = [];
+
+  for (const rawPart of rawParts) {
+    const cleaned = rawPart.replace(/^(?:[-*]|\d+\.)\s*/, "").trim();
+    if (!cleaned) {
+      continue;
+    }
+
+    const point = truncateTelegramText(cleaned, maxLength);
+    if (point && !points.includes(point)) {
+      points.push(point);
+    }
+
+    if (points.length >= maxPoints) {
+      break;
+    }
+  }
+
+  return points;
+}
+
+function buildTelegramSection(title: string, lines: string[]) {
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return [`[${title.toUpperCase()}]`, ...lines.map((line) => `- ${line}`)].join("\n");
+}
+
+function buildMetricRow(labelValues: Array<[string, string]>) {
+  return labelValues
+    .map(([label, value]) => `${label}: ${normalizeTelegramText(value)}`)
+    .join(" | ");
+}
+
 function formatTradeHeader(status: string) {
   switch (status) {
     case "open":
@@ -85,42 +155,71 @@ function formatTradeHeader(status: string) {
 
 export function formatTradeCreatedAlert(trade: Trade, accountName: string) {
   return [
-    formatTradeHeader(trade.status),
-    `${trade.pair} ${trade.direction} on ${accountName}`,
-    `Entry status: ${trade.entryStatus}`,
-    `Entry ${formatPrice(trade.entryPrice)} | SL ${formatPrice(trade.stopLoss)} | TP ${formatPrice(trade.takeProfit)}`,
-    `Risk ${trade.riskAmount.toFixed(2)} | Lot ${trade.lotSize.toFixed(2)} | R:R 1:${trade.riskRewardRatio.toFixed(2)}`,
-    `AI score ${trade.aiScore}/10`,
-    trade.notes ? `Notes: ${trade.notes}` : "Stay disciplined. No entry unless conditions remain confirmed.",
+    buildTelegramHeader(accountName, formatTradeHeader(trade.status)),
+    buildTelegramHeader(trade.pair, trade.direction, trade.entryStatus),
+    "",
+    buildMetricRow([
+      ["Entry", formatPrice(trade.entryPrice)],
+      ["SL", formatPrice(trade.stopLoss)],
+      ["TP", formatPrice(trade.takeProfit)],
+    ]),
+    buildMetricRow([
+      ["Risk", trade.riskAmount.toFixed(2)],
+      ["Lot", trade.lotSize.toFixed(2)],
+      ["RR", `1:${trade.riskRewardRatio.toFixed(2)}`],
+      ["Score", `${trade.aiScore}/10`],
+    ]),
+    trade.notes
+      ? buildTelegramSection("Notes", [truncateTelegramText(trade.notes, 140)])
+      : buildTelegramSection("Notes", ["Stay disciplined. No entry unless conditions remain confirmed."]),
   ].join("\n");
 }
 
 export function formatTradeClosedAlert(trade: Trade, accountName: string) {
   return [
-    formatTradeHeader(trade.status),
-    `${trade.pair} ${trade.direction} on ${accountName}`,
-    `Realized P&L: ${formatSignedCurrency(trade.pnl ?? 0)}`,
-    `Pips: ${(trade.pipsPnl ?? 0).toFixed(1)}`,
-    `Closed at ${trade.closedAt ? new Date(trade.closedAt).toLocaleString() : "now"}`,
-    trade.notes ? `Review: ${trade.notes}` : "Journal the lesson while the trade is fresh.",
+    buildTelegramHeader(accountName, formatTradeHeader(trade.status)),
+    buildTelegramHeader(trade.pair, trade.direction),
+    "",
+    buildMetricRow([
+      ["P&L", formatSignedCurrency(trade.pnl ?? 0)],
+      ["Pips", (trade.pipsPnl ?? 0).toFixed(1)],
+      ["Closed", trade.closedAt ? new Date(trade.closedAt).toLocaleString() : "now"],
+    ]),
+    trade.notes
+      ? buildTelegramSection("Review", [truncateTelegramText(trade.notes, 140)])
+      : buildTelegramSection("Review", ["Journal the lesson while the trade is fresh."]),
   ].join("\n");
 }
 
 export function formatTradeCancelledAlert(trade: Trade, accountName: string) {
   return [
-    formatTradeHeader(trade.status),
-    `${trade.pair} ${trade.direction} on ${accountName}`,
-    "The setup was cancelled before execution conditions were met.",
-    trade.notes ? `Reason: ${trade.notes}` : "Walking away from a broken setup protects capital.",
+    buildTelegramHeader(accountName, formatTradeHeader(trade.status)),
+    buildTelegramHeader(trade.pair, trade.direction),
+    "",
+    buildTelegramSection("Why", ["The setup was cancelled before execution conditions were met."]),
+    buildTelegramSection(
+      "Do now",
+      [trade.notes ? truncateTelegramText(trade.notes, 140) : "Walking away from a broken setup protects capital."]
+    ),
   ].join("\n");
 }
 
 export function formatTradeDeniedAlert(trade: Trade, accountName: string) {
   return [
-    formatTradeHeader(trade.status),
-    `${trade.pair} ${trade.direction} on ${accountName}`,
-    `Reason: ${trade.denialReason || "Trade failed system checks."}`,
-    trade.aiReasoning || "No trade is a valid outcome when risk is unclear.",
+    buildTelegramHeader(accountName, formatTradeHeader(trade.status)),
+    buildTelegramHeader(trade.pair, trade.direction),
+    "",
+    buildTelegramSection("Why", [
+      trade.denialReason ? humanizeTelegramValue(trade.denialReason) : "Trade failed system checks.",
+    ]),
+    buildTelegramSection(
+      "Checks",
+      extractTelegramPoints(
+        trade.aiReasoning || "No trade is a valid outcome when risk is unclear.",
+        2,
+        130
+      )
+    ),
   ].join("\n");
 }
 
@@ -135,65 +234,94 @@ export function formatTelegramNewsDigest(events: Array<{
   }
 
   return [
-    "Upcoming economic events",
+    buildTelegramHeader("NEWS", "Upcoming economic events"),
+    "",
     ...events.map((event) => {
-      return `${event.currency} ${event.event} | ${event.impact.toUpperCase()} | ${event.time.toLocaleString()}`;
+      return `- ${buildTelegramHeader(event.currency, event.event, event.impact.toUpperCase())} @ ${event.time.toLocaleString()}`;
     }),
   ].join("\n");
 }
 
 export function formatEndOfDaySummaryAlert(review: EndOfDayReview) {
-  return [
-    "End-of-day review",
-    review.headline,
-    `Discipline score: ${review.disciplineScore}/10`,
-    `Closed trades: ${review.stats.closedTrades} | Win rate: ${review.stats.winRate}% | Realized P&L: ${formatSignedCurrency(review.stats.pnl)}`,
-    review.strengths.length > 0
-      ? `Keep: ${review.strengths.slice(0, 2).join(" | ")}`
-      : "Keep: Stay patient with CONFIRMED-only entries.",
-    review.mistakes.length > 0
-      ? `Cut: ${review.mistakes.slice(0, 2).join(" | ")}`
-      : "Cut: Remove anything impulsive or under-confirmed.",
-    review.tomorrowFocus.length > 0
-      ? `Tomorrow focus: ${review.tomorrowFocus.slice(0, 2).join(" | ")}`
-      : "Tomorrow focus: Keep risk tight and wait for CONFIRMED status.",
-  ].join("\n");
+  const sections = [
+    buildTelegramHeader("REVIEW", review.date.toLocaleDateString()),
+    truncateTelegramText(review.headline, 160),
+    "",
+    buildMetricRow([
+      ["Discipline", `${review.disciplineScore}/10`],
+      ["Closed", `${review.stats.closedTrades}`],
+      ["Win rate", `${review.stats.winRate}%`],
+      ["P&L", formatSignedCurrency(review.stats.pnl)],
+    ]),
+    buildTelegramSection(
+      "Keep",
+      review.strengths.length > 0
+        ? review.strengths.slice(0, 2).map((value) => truncateTelegramText(value, 120))
+        : ["Stay patient with CONFIRMED-only entries."]
+    ),
+    buildTelegramSection(
+      "Cut",
+      review.mistakes.length > 0
+        ? review.mistakes.slice(0, 2).map((value) => truncateTelegramText(value, 120))
+        : ["Remove anything impulsive or under-confirmed."]
+    ),
+    buildTelegramSection(
+      "Tomorrow",
+      review.tomorrowFocus.length > 0
+        ? review.tomorrowFocus.slice(0, 2).map((value) => truncateTelegramText(value, 120))
+        : ["Keep risk tight and wait for CONFIRMED status."]
+    ),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
 }
 
 export function formatDailyPlanAlert(plan: DailyPlan) {
-  return [
-    "Daily plan",
-    `Watchlist: ${plan.pairs.join(", ") || "No primary pairs selected"}`,
-    `Macro bias: ${plan.macroBias}`,
-    `Session focus: ${plan.sessionFocus}`,
-    `News: ${plan.newsEvents}`,
-    `Max planned trades: ${plan.maxTrades}`,
-    `Levels: ${plan.keyLevels}`,
-    plan.planNotes || "Keep the session simple and only act on CONFIRMED conditions.",
-  ].join("\n");
+  const sections = [
+    buildTelegramHeader("PLAN", plan.date.toLocaleDateString()),
+    `WATCHLIST: ${plan.pairs.join(" | ") || "No primary pairs selected"}`,
+    `TRADES: max ${plan.maxTrades}`,
+    buildTelegramSection("Macro", extractTelegramPoints(plan.macroBias, 2, 130)),
+    buildTelegramSection("Session", extractTelegramPoints(plan.sessionFocus, 2, 130)),
+    buildTelegramSection("News", extractTelegramPoints(plan.newsEvents, 2, 130)),
+    buildTelegramSection("Levels", extractTelegramPoints(plan.keyLevels, 2, 130)),
+    buildTelegramSection(
+      "Focus",
+      extractTelegramPoints(
+        plan.planNotes || "Keep the session simple and only act on CONFIRMED conditions.",
+        3,
+        120
+      )
+    ),
+    buildTelegramSection("Execution rule", ["CONFIRMED only. WAIT and READY are still no-entry states."]),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
 }
 
 export function formatSetupAlert(pair: CurrencyPair, bias: string, score: number): string {
   return [
-    `Setup Watch: ${pair}`,
-    `Bias: ${bias.toUpperCase()}`,
-    `Score: ${score}/10`,
-    `Run /pair ${pair} before doing anything. Entry still needs CONFIRMED status.`,
+    buildTelegramHeader(pair, "SETUP WATCH"),
+    buildMetricRow([
+      ["Bias", bias.toUpperCase()],
+      ["Score", `${score}/10`],
+    ]),
+    buildTelegramSection("Do now", [`Run /pair ${pair} before doing anything. Entry still needs CONFIRMED status.`]),
   ].join("\n");
 }
 
 export function formatDenialAlert(pair: CurrencyPair, reason: string): string {
   return [
-    `Trade Denied: ${pair}`,
-    `Reason: ${reason}`,
-    "Capital protection stays first.",
+    buildTelegramHeader(pair, "TRADE DENIED"),
+    buildTelegramSection("Why", [truncateTelegramText(reason, 120)]),
+    buildTelegramSection("Do now", ["Capital protection stays first."]),
   ].join("\n");
 }
 
 export function formatStatusUpdate(pair: CurrencyPair, status: string, reason: string): string {
   return [
-    `${pair} status: ${status}`,
-    reason,
+    buildTelegramHeader(pair, status),
+    buildTelegramSection("Why", extractTelegramPoints(reason, 2, 120)),
   ].join("\n");
 }
 
@@ -205,19 +333,25 @@ export function formatDecisionSignalAlert(pair: CurrencyPair, signal: PairDecisi
         ? "EXIT NOW"
         : "WAIT";
 
-  return [
-    `${header}: ${pair}`,
-    signal.reason,
-    `Action: ${signal.action}`,
-    ...(signal.details.slice(0, 2).map((detail) => `- ${detail}`)),
-  ].join("\n");
+  const sections = [
+    buildTelegramHeader(pair, header),
+    buildTelegramSection("Why", extractTelegramPoints(signal.reason, 2, 120)),
+    buildTelegramSection("Do now", [truncateTelegramText(signal.action, 120)]),
+    buildTelegramSection(
+      "Checks",
+      signal.details.slice(0, 3).map((detail) => truncateTelegramText(detail, 110))
+    ),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
 }
 
 export function formatRiskAlert(accountName: string, reason: string) {
-  return [
-    "Risk Alert",
-    accountName,
-    reason,
-    "Pause and review before any new trades.",
-  ].join("\n");
+  const sections = [
+    buildTelegramHeader(accountName, "RISK ALERT"),
+    buildTelegramSection("Why", extractTelegramPoints(reason, 2, 120)),
+    buildTelegramSection("Do now", ["Pause and review before any new trades."]),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
 }

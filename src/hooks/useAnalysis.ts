@@ -60,7 +60,7 @@ export function useAnalysis() {
         setResult(data);
         return data;
       } catch (err) {
-        const msg = "Analysis failed. Do not trade without analysis.";
+        const msg = err instanceof Error ? err.message : "Analysis failed. Do not trade without analysis.";
         setError(msg);
         console.error(err);
         return null;

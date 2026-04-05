@@ -101,7 +101,7 @@ export default function AuthPage() {
           <p className="mt-2 text-sm text-slate-400">
             {mode === "signin"
               ? "Use your Supabase account credentials to unlock your personal trading workspace."
-              : "Create an account and the app will prepare starter funded and personal account profiles for you."}
+              : "Create an account first, then add your funded and personal trading accounts in Settings."}
           </p>
 
           <div className="mt-6 space-y-4">

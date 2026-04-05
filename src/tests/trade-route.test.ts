@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { AuthenticationError } from "@/lib/server/auth";
 import { GET, POST } from "@/app/api/trade/route";
 import { tradeRouteDeps } from "@/lib/server/route-deps";
-import { createTrade } from "./fixtures";
+import { createAccount, createTrade } from "./fixtures";
 import { createJsonRequest, restoreDeps } from "./test-helpers";
 
 test("trade GET applies auth scope and filters", async () => {
@@ -54,6 +54,7 @@ test("trade POST create records a trade and sends an alert when linked", async (
     };
     tradeRouteDeps.getTelegramAlertTarget = async () => "chat-123";
     tradeRouteDeps.getAccountName = async () => "FTMO Challenge";
+    tradeRouteDeps.getAccountSnapshot = async () => createAccount();
     tradeRouteDeps.sendTelegramMessage = async (chatId, message) => {
       sentMessages.push({ chatId, message });
     };

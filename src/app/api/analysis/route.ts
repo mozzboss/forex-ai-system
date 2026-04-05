@@ -13,6 +13,61 @@ import { analysisRequestSchema } from "@/lib/validation/api";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function getAnalysisErrorDetails(error: unknown): { message: string; status: number } {
+  const status = typeof (error as { status?: unknown })?.status === "number"
+    ? (error as { status: number }).status
+    : 500;
+
+  const providerMessage =
+    typeof (error as { error?: { error?: { message?: unknown } } })?.error?.error?.message === "string"
+      ? (error as { error: { error: { message: string } } }).error.error.message
+      : typeof (error as { error?: { message?: unknown } })?.error?.message === "string"
+        ? (error as { error: { message: string } }).error.message
+        : null;
+
+  const rawMessage = providerMessage || (error instanceof Error ? error.message : "");
+
+  if (rawMessage === "ANTHROPIC_API_KEY is not set") {
+    return {
+      message: "ANTHROPIC_API_KEY is missing. Add it to .env.local before running pair analysis.",
+      status: 503,
+    };
+  }
+
+  if (/credit balance is too low/i.test(rawMessage)) {
+    return {
+      message: "Anthropic API credits are too low. Add credits or upgrade your Anthropic plan, then run pair analysis again.",
+      status: 402,
+    };
+  }
+
+  if (/invalid api key|authentication/i.test(rawMessage)) {
+    return {
+      message: "Anthropic API authentication failed. Check ANTHROPIC_API_KEY in .env.local.",
+      status: 401,
+    };
+  }
+
+  if (/rate limit/i.test(rawMessage)) {
+    return {
+      message: "Anthropic rate limit reached. Wait a moment, then run pair analysis again.",
+      status: 429,
+    };
+  }
+
+  if (providerMessage) {
+    return {
+      message: providerMessage,
+      status,
+    };
+  }
+
+  return {
+    message: "Analysis failed. Capital protection mode: do not trade.",
+    status,
+  };
+}
+
 // POST /api/analysis
 // Body: { pair: string, accounts: TradingAccount[], marketData?: string }
 export async function POST(req: NextRequest) {
@@ -97,9 +152,10 @@ export async function POST(req: NextRequest) {
     }
 
     console.error("Analysis error:", error);
+    const failure = getAnalysisErrorDetails(error);
     return NextResponse.json(
-      { error: "Analysis failed. Capital protection mode: do not trade." },
-      { status: 500 }
+      { error: failure.message },
+      { status: failure.status }
     );
   }
 }

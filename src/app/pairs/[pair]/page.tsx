@@ -603,8 +603,10 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const runAnalysis = async () => {
     if (activeAccounts.length === 0) return;
     setFeedbackByAccount({});
-    await analyze(pair, activeAccounts, marketNotes.trim() || undefined);
-    setActiveTab("analysis");
+    const analysisResult = await analyze(pair, activeAccounts, marketNotes.trim() || undefined);
+    if (analysisResult) {
+      setActiveTab("analysis");
+    }
   };
 
   const saveFeedback = (accountId: string, tone: FeedbackTone, message: string) => {
