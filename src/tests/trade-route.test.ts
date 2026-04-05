@@ -12,7 +12,7 @@ test("trade GET applies auth scope and filters", async () => {
 
   try {
     let receivedArgs:
-      | { userId: string; status?: string; accountId?: string | null; limit?: number; offset?: number }
+      | { userId: string; status?: string | null; accountId?: string | null; limit?: number; offset?: number }
       | null = null;
 
     tradeRouteDeps.requireAppUserId = async () => "user-trade";

@@ -198,6 +198,12 @@ export default function TradesPage() {
             <Button variant="secondary" onClick={exportDisplayedTrades} disabled={displayedTrades.length === 0} className="w-full sm:w-auto">
               Export CSV
             </Button>
+            <Link
+              href="/mt-import"
+              className="inline-flex w-full items-center justify-center rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:w-auto"
+            >
+              MT Import
+            </Link>
           </div>
         </div>
 

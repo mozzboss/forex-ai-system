@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks";
 import { formatCurrency } from "@/lib/utils";
-import { getPricePrecision } from "@/config/trading";
+import { getPipMultiplier, getPricePrecision } from "@/config/trading";
 import type { Trade, TradingAccount } from "@/types";
 import { Button, Card, CardHeader, StatusBadge } from "@/components/ui";
 
@@ -18,6 +18,7 @@ interface TradeManagerProps {
 interface TradeDraft {
   pnl: string;
   pipsPnl: string;
+  closePrice: string;
   notes: string;
   review: string;
   disciplineScore: string;
@@ -32,10 +33,17 @@ function getDefaultDraft(trade: Trade): TradeDraft {
   return {
     pnl: typeof trade.pnl === "number" ? trade.pnl.toString() : "",
     pipsPnl: typeof trade.pipsPnl === "number" ? trade.pipsPnl.toString() : "",
+    closePrice: "",
     notes: trade.notes || "",
     review: "",
     disciplineScore: "",
   };
+}
+
+function calcPipsFromClose(trade: Trade, closePrice: number): number {
+  const multiplier = getPipMultiplier(trade.pair);
+  const rawPips = (closePrice - trade.entryPrice) * multiplier;
+  return Math.round((trade.direction === "LONG" ? rawPips : -rawPips) * 10) / 10;
 }
 
 function toNumber(value: string) {
@@ -249,10 +257,22 @@ export function TradeManager({ trades, accounts, refreshing = false, onRefresh }
                     {trade.status === "open" ? (
                       <>
                         <InputField
-                          label="Realized P&L"
+                          label="Realized P&L ($)"
                           value={draft.pnl}
                           onChange={(value) => setDraftValue(trade, "pnl", value)}
                           placeholder="125.50"
+                        />
+                        <InputField
+                          label={`Close Price (auto-fills pips)`}
+                          value={draft.closePrice}
+                          onChange={(value) => {
+                            setDraftValue(trade, "closePrice", value);
+                            const cp = Number(value);
+                            if (Number.isFinite(cp) && cp > 0) {
+                              setDraftValue(trade, "pipsPnl", calcPipsFromClose(trade, cp).toString());
+                            }
+                          }}
+                          placeholder={trade.entryPrice.toFixed(getPricePrecision(trade.pair))}
                         />
                         <InputField
                           label="Pips"

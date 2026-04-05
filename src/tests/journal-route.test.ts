@@ -36,11 +36,11 @@ test("journal POST creates an entry for the authenticated user", async () => {
   const originalDeps = { ...journalRouteDeps };
 
   try {
-    let receivedPayload: Record<string, unknown> | null = null;
+    let receivedPayload: { userId: string; [key: string]: unknown } | null = null;
 
     journalRouteDeps.requireAppUserId = async () => "user-11";
     journalRouteDeps.createJournalEntry = async (payload) => {
-      receivedPayload = payload as unknown as Record<string, unknown>;
+      receivedPayload = payload as unknown as { userId: string; [key: string]: unknown };
       return createJournalEntry({ userId: payload.userId, content: payload.content ?? "" });
     };
 
@@ -53,7 +53,7 @@ test("journal POST creates an entry for the authenticated user", async () => {
     const json = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(receivedPayload?.userId, "user-11");
+    assert.equal((receivedPayload as { userId: string } | null)?.userId, "user-11");
     assert.equal(json.entry.userId, "user-11");
   } finally {
     restoreDeps(journalRouteDeps, originalDeps);

@@ -716,9 +716,13 @@ export async function updateTrade(
     if (movingToClosed && shouldCountTrade(existing.status)) {
       const pnl = toOptionalNumber(updated.pnl) ?? 0;
 
+      // Always reflect realized P&L in balance and equity
+      accountUpdate.balance = { increment: roundCurrency(pnl) };
+      accountUpdate.equity = { increment: roundCurrency(pnl) };
+
       if (pnl < 0) {
         accountUpdate.currentDailyLoss = {
-          increment: Math.abs(pnl),
+          increment: Math.abs(roundCurrency(pnl)),
         };
         accountUpdate.lossesInARow = {
           increment: 1,
