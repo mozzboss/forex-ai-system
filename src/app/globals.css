@@ -1,0 +1,66 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-surface: #0f172a;
+  --color-surface-light: #1e293b;
+  --color-surface-lighter: #334155;
+  --color-profit: #22c55e;
+  --color-loss: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-surface);
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--color-surface);
+    color: #e2e8f0;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+}
+
+.status-wait {
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.15);
+}
+
+.status-ready {
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.15);
+}
+
+.status-confirmed {
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.15);
+}
+
+.status-invalid {
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.15);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--color-surface-lighter);
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-white/5 bg-surface-light p-5;
+  }
+
+  .card-header {
+    @apply mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400;
+  }
+}

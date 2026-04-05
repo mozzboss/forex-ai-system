@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { TradingAccount } from "@/types";
+import { AuthenticationError } from "@/lib/server/auth";
+import { accountRouteDeps } from "@/lib/server/route-deps";
+import { accountActionSchema } from "@/lib/validation/api";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/accounts
+export async function GET(req: NextRequest) {
+  try {
+    const userId = await accountRouteDeps.requireAppUserId(req);
+    const accounts = await accountRouteDeps.listAccounts(userId);
+    return NextResponse.json({ accounts });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+
+    console.error("Accounts fetch failed:", error);
+    return NextResponse.json(
+      { error: "Failed to load accounts." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const userId = await accountRouteDeps.requireAppUserId(req);
+    const body = await req.json();
+    const parsed = accountActionSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid account payload", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { action } = parsed.data;
+
+    if (action === "reset_daily") {
+      const accounts = await accountRouteDeps.resetDailyAccountCounters(userId);
+      return NextResponse.json({ message: "Daily counters reset", accounts });
+    }
+
+    if (action === "create") {
+      const newAccount = await accountRouteDeps.createAccount(userId, parsed.data.account as Partial<TradingAccount>);
+      return NextResponse.json({ account: newAccount });
+    }
+
+    if (action === "update") {
+      const updatedAccount = await accountRouteDeps.updateAccount(
+        userId,
+        parsed.data.account.id,
+        parsed.data.account as Partial<TradingAccount>
+      );
+
+      if (!updatedAccount) {
+        return NextResponse.json({ error: "Account not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({ account: updatedAccount });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+
+    console.error("Account operation failed:", error);
+    return NextResponse.json({ error: "Failed to process account" }, { status: 500 });
+  }
+}
