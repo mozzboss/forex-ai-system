@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { AuthenticationError } from "@/lib/server/auth";
 import { TradingAccount } from "@/types";
 import { accountActionSchema } from "@/lib/validation/api";
 
@@ -18,12 +19,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const { accountRouteDeps } = await import("@/lib/server/route-deps");
-    const { AuthenticationError } = await import("@/lib/server/auth");
     const userId = await accountRouteDeps.requireAppUserId(req);
     const accounts = await accountRouteDeps.listAccounts(userId);
     return NextResponse.json({ accounts });
   } catch (error) {
-    const { AuthenticationError } = await import("@/lib/server/auth");
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
@@ -46,7 +45,6 @@ export async function POST(req: NextRequest) {
 
   try {
     const { accountRouteDeps } = await import("@/lib/server/route-deps");
-    const { AuthenticationError } = await import("@/lib/server/auth");
     const userId = await accountRouteDeps.requireAppUserId(req);
     const body = await req.json();
     const parsed = accountActionSchema.safeParse(body);
