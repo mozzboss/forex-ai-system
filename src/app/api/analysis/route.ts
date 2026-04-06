@@ -104,7 +104,7 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
   }
 
   return {
-    message: `Analysis failed: ${rawMessage || "unknown error"}. Capital protection mode: do not trade.`,
+    message: `Analysis failed: ${rawMessage || "unknown error"}.`,
     status,
   };
 }
