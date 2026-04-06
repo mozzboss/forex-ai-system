@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { TradingAccount } from "@/types";
-import { AuthenticationError } from "@/lib/server/auth";
-import { accountRouteDeps } from "@/lib/server/route-deps";
 import { accountActionSchema } from "@/lib/validation/api";
 
 export const dynamic = "force-dynamic";
@@ -19,10 +17,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const { accountRouteDeps } = await import("@/lib/server/route-deps");
+    const { AuthenticationError } = await import("@/lib/server/auth");
     const userId = await accountRouteDeps.requireAppUserId(req);
     const accounts = await accountRouteDeps.listAccounts(userId);
     return NextResponse.json({ accounts });
   } catch (error) {
+    const { AuthenticationError } = await import("@/lib/server/auth");
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
@@ -36,7 +37,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const isBuild =
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    Boolean(process.env.BUILD_ID);
+  if (isBuild) {
+    return NextResponse.json({ error: "Unavailable during build." }, { status: 503 });
+  }
+
   try {
+    const { accountRouteDeps } = await import("@/lib/server/route-deps");
+    const { AuthenticationError } = await import("@/lib/server/auth");
     const userId = await accountRouteDeps.requireAppUserId(req);
     const body = await req.json();
     const parsed = accountActionSchema.safeParse(body);
