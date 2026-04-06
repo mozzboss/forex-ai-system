@@ -47,9 +47,14 @@ export async function middleware(request: NextRequest) {
   );
 
   // getUser() refreshes the session if needed and validates the JWT
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Network/Supabase error — pass through rather than force-redirect
+    return response;
+  }
 
   const isAuthRoute = pathname.startsWith("/auth");
 

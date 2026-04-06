@@ -87,7 +87,7 @@ export function useAnalysis() {
         setCachedAt(now);
         return data;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Analysis failed. Do not trade without analysis.";
+        const msg = err instanceof Error ? err.message : "Analysis failed.";
         setError(msg);
         console.error(err);
         return null;
