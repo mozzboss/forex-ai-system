@@ -36,6 +36,8 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
     ? (error as { status: number }).status
     : 500;
 
+  // SDK 0.82+ wraps API errors as APIError with .message directly on the instance.
+  // Also handle legacy nested shape: error.error.error.message / error.error.message
   const providerMessage =
     typeof (error as { error?: { error?: { message?: unknown } } })?.error?.error?.message === "string"
       ? (error as { error: { error: { message: string } } }).error.error.message
@@ -43,7 +45,7 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
         ? (error as { error: { message: string } }).error.message
         : null;
 
-  const rawMessage = providerMessage || (error instanceof Error ? error.message : "");
+  const rawMessage = providerMessage || (error instanceof Error ? error.message : String(error));
 
   if (/ANTHROPIC_API_KEY is not set/i.test(rawMessage)) {
     return {
@@ -59,23 +61,30 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
     };
   }
 
-  if (/invalid api key|authentication/i.test(rawMessage)) {
+  if (/invalid.?x?-?api.?key|invalid api key|authentication_error|Could not resolve authentication/i.test(rawMessage)) {
     return {
-      message: "Anthropic API authentication failed. Check ANTHROPIC_API_KEY in .env.local.",
+      message: "Anthropic API authentication failed. Check ANTHROPIC_API_KEY in Vercel environment variables.",
       status: 401,
     };
   }
 
-  if (/rate limit/i.test(rawMessage)) {
+  if (/rate.?limit|too.?many.?requests/i.test(rawMessage)) {
     return {
       message: "Anthropic rate limit reached. Wait a moment, then run pair analysis again.",
       status: 429,
     };
   }
 
-  if (/prisma|database|db|connection|ECONNREFUSED|ETIMEDOUT/i.test(rawMessage)) {
+  if (/overloaded|529/i.test(rawMessage) || status === 529) {
     return {
-      message: "Database connection failed during analysis. Check DATABASE_URL in Vercel environment variables.",
+      message: "Anthropic API is currently overloaded. Try again in a minute.",
+      status: 503,
+    };
+  }
+
+  if (/prisma|database|db|connection|ECONNREFUSED|ETIMEDOUT|EMAXCONN|max clients|session mode/i.test(rawMessage)) {
+    return {
+      message: "Database connection failed during analysis. Check DATABASE_URL in Vercel — use pooler URL (port 6543, pgbouncer=true).",
       status: 503,
     };
   }
@@ -219,7 +228,12 @@ export async function POST(req: NextRequest) {
     }
 
     const rawErr = error instanceof Error ? error.message : String(error);
-    console.error("Analysis error:", rawErr, error);
+    console.error("Analysis error:", rawErr, {
+      type: (error as { constructor?: { name?: string } })?.constructor?.name,
+      status: (error as { status?: unknown })?.status,
+      errorBody: (error as { error?: unknown })?.error,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     const failure = getAnalysisErrorDetails(error);
     return NextResponse.json(
       { error: failure.message },
