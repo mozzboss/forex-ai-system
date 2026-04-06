@@ -353,7 +353,10 @@ export default function DashboardPage() {
     loading: trackedPairsLoading,
     error: trackedPairsError,
     refetch: refetchTrackedPairs,
+    saving: trackedPairsSaving,
+    saveTrackedPairs,
   } = useTrackedPairs();
+  const [density, setDensity] = useState<"cozy" | "compact">("cozy");
   const [trades, setTrades] = useState<Trade[]>([]);
   const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
   const [marketSnapshots, setMarketSnapshots] = useState<DashboardMarketSnapshot[]>([]);
@@ -520,7 +523,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen space-y-5 p-4 sm:p-6">
+    <div className={cn("min-h-screen p-4 sm:p-6", density === "compact" ? "space-y-3" : "space-y-5")}>
 
       {/* ── ROW 1: Header bar ── */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -528,7 +531,27 @@ export default function DashboardPage() {
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex AI System</div>
           <h1 className="mt-1 text-xl font-bold tracking-tight text-white sm:text-2xl">Trading Dashboard</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <div className="flex rounded-lg border border-white/10 bg-white/5 p-1 text-xs text-gray-400">
+            <button
+              className={cn(
+                "rounded-md px-2 py-1 transition",
+                density === "cozy" ? "bg-white/10 text-white" : "hover:bg-white/10"
+              )}
+              onClick={() => setDensity("cozy")}
+            >
+              Cozy
+            </button>
+            <button
+              className={cn(
+                "rounded-md px-2 py-1 transition",
+                density === "compact" ? "bg-white/10 text-white" : "hover:bg-white/10"
+              )}
+              onClick={() => setDensity("compact")}
+            >
+              Compact
+            </button>
+          </div>
           <Button variant="secondary" onClick={refreshAll} disabled={accountsLoading || refreshing} className="text-sm">
             {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
@@ -546,6 +569,30 @@ export default function DashboardPage() {
           {accountError || trackedPairsError || pageError}
         </div>
       ) : null}
+      <StatusRail
+        items={[
+          {
+            label: "Accounts",
+            state: accountsLoading ? "syncing" : accountError ? "alert" : accounts.length > 0 ? "ok" : "muted",
+            detail: accountError || `${accounts.length} loaded`,
+          },
+          {
+            label: "Pairs",
+            state: trackedPairsLoading ? "syncing" : trackedPairsError ? "alert" : trackedPairs.length > 0 ? "ok" : "muted",
+            detail: trackedPairsError || `${trackedPairs.length} tracked`,
+          },
+          {
+            label: "Market",
+            state: refreshing ? "syncing" : marketError ? "alert" : marketSnapshots.length > 0 ? "ok" : "muted",
+            detail: marketError || `${marketSnapshots.length} snapshots`,
+          },
+          {
+            label: "News",
+            state: refreshing ? "syncing" : newsEvents.length > 0 ? "ok" : "muted",
+            detail: `${newsEvents.length} events`,
+          },
+        ]}
+      />
 
       {/* ── ROW 2: Decision + Session Clock + KPIs ── */}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
@@ -613,6 +660,19 @@ export default function DashboardPage() {
         </Card>
 
         <div className="space-y-4">
+          <PairsChipCard
+            pairs={trackedPairs}
+            loading={trackedPairsLoading}
+            saving={trackedPairsSaving}
+            onAdd={async (pair) => {
+              const next = uniquePairs([...trackedPairs, pair]);
+              await saveTrackedPairs(next);
+            }}
+            onRemove={async (pair) => {
+              const next = trackedPairs.filter((p) => p !== pair);
+              await saveTrackedPairs(next);
+            }}
+          />
           <Card>
             <CardHeader>News Countdown</CardHeader>
             <NewsCountdown events={newsEvents.slice(0, 5)} />
@@ -630,7 +690,12 @@ export default function DashboardPage() {
       {/* ── ROW 5: Accounts + Best trade ── */}
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
-          <CardHeader>Account Guardrails</CardHeader>
+          <CardHeader>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>Account Guardrails</span>
+              <RiskStrip accounts={activeAccounts} />
+            </div>
+          </CardHeader>
           <div className="space-y-3">
             {activeAccounts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
@@ -766,5 +831,138 @@ function GuardrailPill({ label, value, danger }: { label: string; value: string;
       <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
       <div className={cn("mt-0.5 text-xs font-semibold", danger ? "text-red-400" : "text-white")}>{value}</div>
     </div>
+  );
+}
+
+function StatusRail({
+  items,
+}: {
+  items: { label: string; state: "ok" | "syncing" | "alert" | "muted"; detail: string }[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className={cn(
+            "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium",
+            item.state === "ok" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+            item.state === "syncing" && "border-sky-500/30 bg-sky-500/10 text-sky-200",
+            item.state === "alert" && "border-red-500/30 bg-red-500/10 text-red-200",
+            item.state === "muted" && "border-white/10 bg-white/5 text-gray-400"
+          )}
+        >
+          <div className="h-2.5 w-2.5 rounded-full bg-current" />
+          <div>
+            <div className="uppercase tracking-wide">{item.label}</div>
+            <div className="text-[11px] text-white/70">{item.detail}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskStrip({ accounts }: { accounts: TradingAccount[] }) {
+  const snapshot = useMemo(() => {
+    if (accounts.length === 0) return null;
+    const totalEquity = accounts.reduce((sum, account) => sum + account.equity, 0);
+    const openRisk = accounts.reduce(
+      (sum, account) =>
+        sum + (account.openTrades || []).reduce((inner, trade) => inner + (trade.riskAmount || 0), 0),
+      0
+    );
+    const dailyLoss = accounts.reduce((sum, account) => sum + account.currentDailyLoss, 0);
+    const maxDailyLoss = accounts.reduce((sum, account) => sum + account.maxDailyLoss, 0);
+    return {
+      openRiskPct: totalEquity ? Math.round((openRisk / totalEquity) * 1000) / 10 : 0,
+      dailyLossUsage: maxDailyLoss ? Math.round((dailyLoss / maxDailyLoss) * 100) : 0,
+    };
+  }, [accounts]);
+
+  if (!snapshot) return null;
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-gray-400">
+      <span>Open risk</span>
+      <div className="h-2 w-28 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            snapshot.openRiskPct >= 1 ? "bg-amber-400" : "bg-emerald-400"
+          )}
+          style={{ width: `${clamp(snapshot.openRiskPct, 0, 100)}%` }}
+        />
+      </div>
+      <span className={snapshot.openRiskPct >= 1 ? "text-amber-200" : "text-emerald-200"}>
+        {snapshot.openRiskPct}% risk · {snapshot.dailyLossUsage}% daily loss
+      </span>
+    </div>
+  );
+}
+
+const ALL_PAIRS: CurrencyPair[] = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD", "XAUUSD"];
+
+function PairsChipCard({
+  pairs,
+  loading,
+  saving,
+  onAdd,
+  onRemove,
+}: {
+  pairs: CurrencyPair[];
+  loading: boolean;
+  saving: boolean;
+  onAdd: (pair: CurrencyPair) => void | Promise<void>;
+  onRemove: (pair: CurrencyPair) => void | Promise<void>;
+}) {
+  const [candidate, setCandidate] = useState<CurrencyPair>("EURUSD");
+  const addDisabled = pairs.includes(candidate) || saving;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <span>Tracked Pairs</span>
+          <span className="text-xs text-gray-500">{loading ? "Loading…" : `${pairs.length}/8`}</span>
+        </div>
+      </CardHeader>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {pairs.length === 0 ? (
+            <div className="text-xs text-gray-500">No pairs yet. Add one below.</div>
+          ) : (
+            pairs.map((pair) => (
+              <button
+                key={pair}
+                className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white hover:border-white/30"
+                onClick={() => onRemove(pair)}
+                disabled={saving}
+              >
+                {pair}
+                <span className="text-xs text-gray-400 group-hover:text-red-300">×</span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            className="flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+            value={candidate}
+            onChange={(e) => setCandidate(e.target.value as CurrencyPair)}
+            disabled={saving}
+          >
+            {ALL_PAIRS.map((pair) => (
+              <option key={pair} value={pair}>
+                {pair}
+              </option>
+            ))}
+          </select>
+          <Button onClick={() => onAdd(candidate)} disabled={addDisabled}>
+            {saving ? "Saving…" : addDisabled ? "Added" : "Add pair"}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
