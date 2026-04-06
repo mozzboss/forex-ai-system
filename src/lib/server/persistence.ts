@@ -343,11 +343,10 @@ function maskTelegramChatId(chatId?: string | null) {
 }
 
 export async function getTrackedPairs(userId: string): Promise<CurrencyPair[]> {
-  const user = await prisma.user.findUnique({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const user = await (prisma.user as any).findUnique({
     where: { id: userId },
-    select: {
-      trackedPairs: true,
-    },
+    select: { trackedPairs: true },
   });
 
   return normalizeTrackedPairs(user?.trackedPairs);
@@ -359,14 +358,11 @@ export async function updateTrackedPairs(
 ): Promise<CurrencyPair[]> {
   const trackedPairs = normalizeTrackedPairs(pairs);
 
-  const user = await prisma.user.update({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const user = await (prisma.user as any).update({
     where: { id: userId },
-    data: {
-      trackedPairs,
-    },
-    select: {
-      trackedPairs: true,
-    },
+    data: { trackedPairs },
+    select: { trackedPairs: true },
   });
 
   return normalizeTrackedPairs(user.trackedPairs);
