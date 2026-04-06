@@ -10,8 +10,11 @@ export const runtime = "nodejs";
 
 // GET /api/accounts
 export async function GET(req: NextRequest) {
-  // During Vercel static build, short-circuit to avoid DB/auth failures
-  if (process.env.NEXT_PHASE === "phase-production-build") {
+  // During static build or pre-render steps, skip DB/auth work to keep the build green
+  const isBuild =
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    Boolean(process.env.BUILD_ID);
+  if (isBuild) {
     return NextResponse.json({ accounts: [] });
   }
 
