@@ -76,7 +76,7 @@ function getTimeframeMinutes(timeframe: MarketTimeframe) {
 }
 
 function getOutputSize(timeframe: MarketTimeframe) {
-  return timeframe === "4h" ? "10" : "12";
+  return timeframe === "4h" ? "15" : "30";
 }
 
 function pairToSymbol(pair: CurrencyPair) {
@@ -129,8 +129,8 @@ function buildFallbackSnapshot(pair: CurrencyPair, timeframe: MarketTimeframe): 
   const wickStep = (isGold ? 0.45 : isJpyPair ? 0.02 : 0.0002) * timeframeFactor;
   const timeframeMinutes = getTimeframeMinutes(timeframe);
 
-  const bars: MarketBar[] = Array.from({ length: 12 }).map((_, index) => {
-    const step = 11 - index;
+  const bars: MarketBar[] = Array.from({ length: 30 }).map((_, index) => {
+    const step = 29 - index;
     const open = Number((basePrice - step * trendStep).toFixed(precision));
     const close = Number((open + (index % 2 === 0 ? 1 : -1) * candleStep).toFixed(precision));
     const high = Number((Math.max(open, close) + wickStep).toFixed(precision));
