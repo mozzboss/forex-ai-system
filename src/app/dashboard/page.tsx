@@ -503,7 +503,10 @@ export default function DashboardPage() {
   }, [trades]);
 
   const session = getSessionSnapshot(new Date());
-  const upcomingHighImpact = newsEvents.filter((event) => event.impact === "high");
+  const upcomingHighImpact = newsEvents.filter((event) => {
+    const minutesAway = (event.time.getTime() - Date.now()) / 60_000;
+    return event.impact === "high" && minutesAway >= 0 && minutesAway <= 1440;
+  });
   const dashboardDecision = useMemo(
     () =>
       deriveDashboardDecisionState({
