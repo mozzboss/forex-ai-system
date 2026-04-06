@@ -135,7 +135,7 @@ export function CandlestickChart({
   }
 
   const precision = getPricePrecision(pair);
-  const chartBars = bars.slice(-12);
+  const chartBars = bars.slice(-20);
   const highs = chartBars.map((bar) => bar.high);
   const lows = chartBars.map((bar) => bar.low);
   const overlayPrices = overlays.map((overlay) => overlay.price);
@@ -144,18 +144,18 @@ export function CandlestickChart({
   const maxPrice = Math.max(...highs, ...overlayPrices, ...zoneHighs);
   const minPrice = Math.min(...lows, ...overlayPrices, ...zoneLows);
   const priceRange = Math.max(maxPrice - minPrice, Number.EPSILON);
-  const paddedRange = priceRange * 0.12;
+  const paddedRange = priceRange * 0.15;
   const topPrice = maxPrice + paddedRange;
   const bottomPrice = minPrice - paddedRange;
   const drawableRange = Math.max(topPrice - bottomPrice, Number.EPSILON);
 
   const width = 720;
-  const height = 260;
-  const padding = { top: 18, right: 16, bottom: 42, left: 16 };
+  const height = 300;
+  const padding = { top: 20, right: 64, bottom: 44, left: 8 };
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
   const candleSlot = innerWidth / chartBars.length;
-  const candleWidth = clamp(candleSlot * 0.42, 10, 26);
+  const candleWidth = clamp(candleSlot * 0.55, 6, 22);
 
   const toY = (price: number) =>
     padding.top + ((topPrice - price) / drawableRange) * innerHeight;
@@ -164,11 +164,17 @@ export function CandlestickChart({
   const sweepMarkers = showLiquiditySweeps ? detectLiquiditySweeps(chartBars) : [];
   const mergedMarkers = [...markers, ...sweepMarkers];
 
-  const priceTicks = [topPrice, topPrice - drawableRange / 2, bottomPrice];
+  const priceTicks = [
+    topPrice,
+    topPrice - drawableRange * 0.25,
+    topPrice - drawableRange * 0.5,
+    topPrice - drawableRange * 0.75,
+    bottomPrice,
+  ];
 
   return (
     <div className={cn("rounded-2xl border border-white/10 bg-slate-950/35 p-3", className)}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-64 w-full overflow-visible">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-72 w-full overflow-visible">
         <defs>
           <linearGradient id="candleBackdrop" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgba(59,130,246,0.12)" />
@@ -194,15 +200,16 @@ export function CandlestickChart({
                 y1={y}
                 x2={width - padding.right}
                 y2={y}
-                stroke="rgba(148,163,184,0.16)"
-                strokeDasharray="4 6"
+                stroke="rgba(148,163,184,0.12)"
+                strokeDasharray="3 5"
               />
               <text
-                x={width - padding.right}
-                y={y - 6}
-                textAnchor="end"
-                fontSize="11"
-                fill="rgba(148,163,184,0.92)"
+                x={width - padding.right + 6}
+                y={y}
+                textAnchor="start"
+                dominantBaseline="middle"
+                fontSize="10.5"
+                fill="rgba(148,163,184,0.85)"
               >
                 {tick.toFixed(precision)}
               </text>
@@ -314,43 +321,58 @@ export function CandlestickChart({
           const highY = toY(bar.high);
           const lowY = toY(bar.low);
           const bodyTop = Math.min(openY, closeY);
-          const bodyHeight = Math.max(Math.abs(closeY - openY), 2);
+          const bodyHeight = Math.max(Math.abs(closeY - openY), 3);
           const bullish = bar.close >= bar.open;
-          const fill = bullish ? "#22c55e" : "#ef4444";
-          const shadow = bullish ? "rgba(34,197,94,0.32)" : "rgba(239,68,68,0.32)";
+          const bodyColor = bullish ? "#22c55e" : "#ef4444";
+          const wickColor = bullish ? "rgba(34,197,94,0.75)" : "rgba(239,68,68,0.75)";
+          const showTime = index % Math.ceil(chartBars.length / 8) === 0;
 
           return (
             <g key={bar.time}>
+              {/* Upper wick */}
               <line
                 x1={centerX}
                 y1={highY}
                 x2={centerX}
-                y2={lowY}
-                stroke={shadow}
-                strokeWidth="2"
+                y2={bodyTop}
+                stroke={wickColor}
+                strokeWidth="1.5"
                 strokeLinecap="round"
               />
+              {/* Lower wick */}
+              <line
+                x1={centerX}
+                y1={bodyTop + bodyHeight}
+                x2={centerX}
+                y2={lowY}
+                stroke={wickColor}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+              {/* Body */}
               <rect
                 x={centerX - candleWidth / 2}
                 y={bodyTop}
                 width={candleWidth}
                 height={bodyHeight}
-                rx="4"
-                fill={fill}
-                opacity="0.94"
+                rx="2"
+                fill={bodyColor}
+                opacity="0.92"
               />
-              <text
-                x={centerX}
-                y={height - 12}
-                textAnchor="middle"
-                fontSize="10"
-                fill="rgba(148,163,184,0.92)"
-              >
-                {new Date(bar.time).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </text>
+              {showTime && (
+                <text
+                  x={centerX}
+                  y={height - 10}
+                  textAnchor="middle"
+                  fontSize="9.5"
+                  fill="rgba(148,163,184,0.75)"
+                >
+                  {new Date(bar.time).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </text>
+              )}
             </g>
           );
         })}
