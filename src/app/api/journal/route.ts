@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 
 // GET /api/journal
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ entries: [] });
+  }
   try {
     const userId = await journalRouteDeps.requireAppUserId(req);
     const { searchParams } = new URL(req.url);
@@ -33,6 +36,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/journal
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ error: "Unavailable during build" }, { status: 503 });
+  }
   try {
     const userId = await journalRouteDeps.requireAppUserId(req);
     const body = await req.json();

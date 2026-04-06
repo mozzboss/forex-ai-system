@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 // POST /api/risk
 // Body: RiskInput
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ error: "Unavailable during build" }, { status: 503 });
+  }
   try {
     await requireAppUserId(req);
     const body = await req.json();

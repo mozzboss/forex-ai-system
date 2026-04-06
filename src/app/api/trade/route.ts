@@ -89,6 +89,9 @@ async function notifyRiskAlert(userId: string, accountId: string) {
 
 // GET /api/trade
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ trades: [], total: 0 });
+  }
   try {
     const userId = await tradeRouteDeps.requireAppUserId(req);
     const { searchParams } = new URL(req.url);
@@ -119,6 +122,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/trade
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ error: "Unavailable during build" }, { status: 503 });
+  }
   try {
     const userId = await tradeRouteDeps.requireAppUserId(req);
     const body = await req.json();
@@ -206,10 +212,6 @@ export async function POST(req: NextRequest) {
     }
 
     console.error("Trade operation failed:", error);
-    if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
     return NextResponse.json({ error: "Trade operation failed" }, { status: 500 });
   }
 }

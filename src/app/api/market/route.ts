@@ -9,6 +9,9 @@ import { CurrencyPair } from "@/types";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ snapshot: null });
+  }
   try {
     await requireAppUserId(req);
     const { searchParams } = new URL(req.url);

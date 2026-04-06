@@ -15,6 +15,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ review: null, context: null });
+  }
   try {
     const userId = await requireAppUserId(req);
     const [review, context] = await Promise.all([
@@ -37,6 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ error: "Unavailable during build" }, { status: 503 });
+  }
   try {
     const userId = await requireAppUserId(req);
     const body = await req.json();

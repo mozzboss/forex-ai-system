@@ -7,6 +7,9 @@ import { trackedPairsPreferenceSchema } from "@/lib/validation/api";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ trackedPairs: [] });
+  }
   try {
     const userId = await pairPreferencesRouteDeps.requireAppUserId(req);
     const trackedPairs = await pairPreferencesRouteDeps.getTrackedPairs(userId);
@@ -23,6 +26,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return NextResponse.json({ error: "Unavailable during build" }, { status: 503 });
+  }
   try {
     const userId = await pairPreferencesRouteDeps.requireAppUserId(req);
     const body = await req.json();
