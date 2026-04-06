@@ -1249,10 +1249,62 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                       <AccountLine label="Loss Streak" value={`${account.lossesInARow}/${rules.stopAfterConsecutiveLosses}`} />
                     </div>
 
-                    {analysisRisk ? (
+                    {analysisRisk && analysis?.tradeSetup ? (
+                      <div className="mt-4 space-y-3">
+                        {/* Trade levels */}
+                        <div className={cn(
+                          "rounded-xl border-2 p-3",
+                          analysis.tradeSetup.direction === "LONG"
+                            ? "border-green-500/30 bg-green-500/5"
+                            : "border-red-500/30 bg-red-500/5"
+                        )}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Trade Levels</div>
+                            <span className={cn(
+                              "text-xs font-bold uppercase px-2 py-0.5 rounded-full",
+                              analysis.tradeSetup.direction === "LONG"
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-red-500/20 text-red-400"
+                            )}>
+                              {analysis.tradeSetup.direction === "LONG" ? "BUY" : "SELL"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded-lg bg-white/5 p-2">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500">Entry</div>
+                              <div className="mt-1 font-mono text-sm font-semibold text-white">
+                                {analysis.tradeSetup.entryZone.low.toFixed(getPricePrecision(pair))}
+                              </div>
+                              <div className="text-[9px] text-gray-600">–{analysis.tradeSetup.entryZone.high.toFixed(getPricePrecision(pair))}</div>
+                            </div>
+                            <div className="rounded-lg bg-red-500/10 p-2">
+                              <div className="text-[10px] uppercase tracking-wide text-red-500">Stop Loss</div>
+                              <div className="mt-1 font-mono text-sm font-semibold text-red-400">
+                                {analysis.tradeSetup.stopLoss.toFixed(getPricePrecision(pair))}
+                              </div>
+                              <div className="text-[9px] text-gray-600">{formatCurrency(analysisRisk.maxLoss)} risk</div>
+                            </div>
+                            <div className="rounded-lg bg-green-500/10 p-2">
+                              <div className="text-[10px] uppercase tracking-wide text-green-500">Take Profit</div>
+                              <div className="mt-1 font-mono text-sm font-semibold text-green-400">
+                                {analysis.tradeSetup.takeProfit.toFixed(getPricePrecision(pair))}
+                              </div>
+                              <div className="text-[9px] text-gray-600">{formatCurrency(analysisRisk.maxProfit)} profit</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                            <span>Lot size: <span className="text-white font-semibold font-mono">{analysisRisk.lotSize.toFixed(2)}</span></span>
+                            <span>R:R <span className="text-white font-semibold">1:{analysisRisk.riskRewardRatio.toFixed(1)}</span></span>
+                          </div>
+                        </div>
+                        {analysisRisk.denial ? (
+                          <p className="text-xs text-red-300 px-1">{analysisRisk.denial}</p>
+                        ) : null}
+                      </div>
+                    ) : analysisRisk ? (
                       <div className="mt-4 rounded-xl border border-white/10 bg-surface-light p-3">
-                        <div className="text-xs uppercase tracking-wide text-gray-500">AI risk snapshot</div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                        <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Risk Snapshot</div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
                           <AccountLine label="Lot Size" value={analysisRisk.lotSize.toFixed(2)} />
                           <AccountLine label="R:R" value={`1:${analysisRisk.riskRewardRatio.toFixed(1)}`} />
                           <AccountLine label="Max Loss" value={formatCurrency(analysisRisk.maxLoss)} />
