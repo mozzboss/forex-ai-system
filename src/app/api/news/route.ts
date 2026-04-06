@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     if (error instanceof AuthenticationError) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
-    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    console.error("News route auth failed:", error);
+    return NextResponse.json({ error: "Service unavailable" }, { status: 503 });
   }
 
   const { searchParams } = new URL(req.url);

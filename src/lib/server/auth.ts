@@ -43,9 +43,15 @@ export async function requireSupabaseUser(req: NextRequest): Promise<AuthUser> {
 export async function requireAppUserId(req: NextRequest): Promise<string> {
   const accessToken = getBearerToken(req);
 
-  // Single-user fallback: if no bearer token is present, operate as the seeded default user.
   if (!accessToken) {
-    return ensureDefaultUserSetup();
+    // Single-user fallback: operate as the seeded default user when no auth token is present.
+    try {
+      return await ensureDefaultUserSetup();
+    } catch (error) {
+      throw new AuthenticationError(
+        "Could not initialise user session. Check database connectivity."
+      );
+    }
   }
 
   const user = await requireSupabaseUser(req);
