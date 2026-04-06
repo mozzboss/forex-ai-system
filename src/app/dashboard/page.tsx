@@ -520,61 +520,26 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      <section className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.2),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(34,197,94,0.12),_transparent_30%),linear-gradient(135deg,_rgba(15,23,42,1),_rgba(30,41,59,0.95))] p-5 sm:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-2xl">
-            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-300/80">
-              Discipline Dashboard
-            </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Stay selective, protect capital, and only act when the setup earns it.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-              This dashboard reflects current account pressure, open trade exposure, and nearby news
-              so we can slow down bad decisions before they become expensive ones.
-            </p>
-          </div>
+    <div className="min-h-screen space-y-5 p-4 sm:p-6">
 
-          <div className="flex flex-col gap-3 xl:min-w-[340px]">
-            <SessionClock />
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="secondary" onClick={refreshAll} disabled={accountsLoading || refreshing} className="w-full sm:w-auto">
-                {refreshing ? "Refreshing..." : "Refresh Dashboard"}
-              </Button>
-              <Link
-                href="/pairs"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white sm:w-auto"
-              >
-                Open Pair Workspace
-              </Link>
-            </div>
-          </div>
+      {/* ── ROW 1: Header bar ── */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex AI System</div>
+          <h1 className="mt-1 text-xl font-bold tracking-tight text-white sm:text-2xl">Trading Dashboard</h1>
         </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricPill
-            label="Active Accounts"
-            value={activeAccounts.length.toString()}
-            detail={`${accountCapacity} total trade slots available today`}
-          />
-          <MetricPill
-            label="High-Impact Events"
-            value={upcomingHighImpact.length.toString()}
-            detail="30-minute buffer still applies before every planned trade"
-          />
-          <MetricPill
-            label="Tracked Pairs"
-            value={trackedPairsLoading ? "..." : dashboardPairs.length.toString()}
-            detail="personal universe feeding the dashboard and planning flow"
-          />
-          <MetricPill
-            label="Execution Rule"
-            value="CONFIRMED Only"
-            detail="WAIT and READY are preparation states, never entry signals"
-          />
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={refreshAll} disabled={accountsLoading || refreshing} className="text-sm">
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+          <Link
+            href="/pairs"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-500/15 px-4 py-2 text-sm font-medium text-brand-300 transition-colors hover:bg-brand-500/25"
+          >
+            Pair Workspace →
+          </Link>
         </div>
-      </section>
+      </header>
 
       {accountError || trackedPairsError || pageError ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -582,58 +547,51 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <DecisionPanel
-        title="Right Now"
-        mode={dashboardDecision.mode}
-        reason={dashboardDecision.reason}
-        action={dashboardDecision.action}
-        details={dashboardDecision.details}
-        stickyMobile
-      />
-
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
-          <CardHeader>Currency Tilt</CardHeader>
-          <p className="mb-4 text-sm text-gray-400">
-            Derived from current open and pending exposure, not a live market feed. Use it as a
-            posture check, not a trade trigger.
-          </p>
-          <CurrencyStrength data={currencyStrength} />
-        </Card>
-
-        <Card>
-          <CardHeader>News Countdown</CardHeader>
-          <p className="mb-4 text-sm text-gray-400">
-            High-impact events close to the entry window should slow us down immediately.
-          </p>
-          <NewsCountdown events={newsEvents.slice(0, 5)} />
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
-          <CardHeader>Setup Heatmap</CardHeader>
-          <p className="mb-4 text-sm text-gray-400">
-            Scores reflect current system posture. Active trade pairs surface first, while news-heavy
-            pairs stay muted until conditions improve.
-          </p>
-          <SetupHeatmap data={heatmap} />
-        </Card>
-
-        <Card>
-          <CardHeader>Daily Stats</CardHeader>
-          <p className="mb-4 text-sm text-gray-400">
-            Performance matters, but discipline score tracks whether we stayed inside the rules.
-          </p>
-          <DailyStats
-            tradesCount={stats.tradesCount}
-            winRate={stats.winRate}
-            pnl={stats.pnl}
-            disciplineScore={stats.disciplineScore}
+      {/* ── ROW 2: Decision + Session Clock + KPIs ── */}
+      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+        <div className="space-y-4">
+          <DecisionPanel
+            title="Right Now"
+            mode={dashboardDecision.mode}
+            reason={dashboardDecision.reason}
+            action={dashboardDecision.action}
+            details={dashboardDecision.details}
+            stickyMobile
           />
-        </Card>
+
+          {/* KPI strip */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <KpiCard
+              label="Active Accounts"
+              value={activeAccounts.length.toString()}
+              sub={`${accountCapacity} trade slots`}
+              color="text-blue-400"
+            />
+            <KpiCard
+              label="Today's P&L"
+              value={formatCurrency(stats.pnl)}
+              sub={`${stats.tradesCount} trades`}
+              color={stats.pnl >= 0 ? "text-green-400" : "text-red-400"}
+            />
+            <KpiCard
+              label="News Events"
+              value={upcomingHighImpact.length.toString()}
+              sub="high-impact next 24h"
+              color={upcomingHighImpact.length > 0 ? "text-yellow-400" : "text-slate-400"}
+            />
+            <KpiCard
+              label="Discipline"
+              value={`${stats.disciplineScore}/10`}
+              sub="today's score"
+              color={stats.disciplineScore >= 7 ? "text-green-400" : stats.disciplineScore >= 5 ? "text-yellow-400" : "text-red-400"}
+            />
+          </div>
+        </div>
+
+        <SessionClock />
       </div>
 
+      {/* ── ROW 3: Market board (full width) ── */}
       <DashboardMarketBoard
         snapshots={marketSnapshots}
         events={newsEvents}
@@ -644,131 +602,143 @@ export default function DashboardPage() {
         onTimeframeChange={setMarketTimeframe}
       />
 
-      <DailyPlanCard />
-
-      <NewsImpactChart events={newsEvents} />
-
-      <DashboardPerformanceChart trades={trades} />
-
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      {/* ── ROW 4: Heatmap + News countdown ── */}
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
-          <CardHeader>Active Setups</CardHeader>
-          <p className="mb-4 text-sm text-gray-400">
-            Only open and pending trades appear here. Anything not fully confirmed stays in observation mode.
+          <CardHeader>Setup Heatmap</CardHeader>
+          <p className="mb-4 text-xs text-gray-500">
+            Active pairs surface first. News-heavy pairs stay muted until conditions improve.
           </p>
-          <ActiveSetups setups={activeSetups} />
+          <SetupHeatmap data={heatmap} />
         </Card>
 
         <div className="space-y-4">
           <Card>
-            <CardHeader>Account Guardrails</CardHeader>
-            <div className="space-y-3">
-              {activeAccounts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-6 text-sm text-gray-500">
-                  No active accounts yet. Add or activate an account in settings before planning trades.
-                </div>
-              ) : (
-                activeAccounts.map((account) => {
-                  const rules = getAccountRules(account.mode);
-                  const dailyLossUsage = account.maxDailyLoss > 0
-                    ? (account.currentDailyLoss / account.maxDailyLoss) * 100
-                    : 0;
-
-                  return (
-                    <div key={account.id} className="rounded-xl border border-white/5 bg-surface p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="text-sm font-semibold text-white">{account.name}</div>
-                          <div className="mt-1 text-xs uppercase tracking-wide text-gray-500">
-                            {account.mode} account
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Risk / trade</div>
-                          <div className="text-sm font-semibold text-white">
-                            {formatPercent(account.riskPercent)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <AccountMetric label="Balance" value={formatCurrency(account.balance)} />
-                        <AccountMetric
-                          label="Trades Today"
-                          value={`${account.currentDailyTrades}/${rules.maxTradesPerDay}`}
-                        />
-                        <AccountMetric
-                          label="Daily Loss"
-                          value={`${formatCurrency(account.currentDailyLoss)} / ${formatCurrency(account.maxDailyLoss)}`}
-                        />
-                        <AccountMetric
-                          label="Loss Streak"
-                          value={`${account.lossesInARow}/${rules.stopAfterConsecutiveLosses}`}
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
-                          <span>Daily loss usage</span>
-                          <span>{Math.round(dailyLossUsage)}%</span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-surface-light">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              dailyLossUsage >= 80
-                                ? "bg-red-500"
-                                : dailyLossUsage >= 50
-                                  ? "bg-yellow-500"
-                                  : "bg-green-500"
-                            )}
-                            style={{ width: `${clamp(dailyLossUsage, 0, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <CardHeader>News Countdown</CardHeader>
+            <NewsCountdown events={newsEvents.slice(0, 5)} />
           </Card>
-
           <Card>
-            <CardHeader>Best Trade on the Board</CardHeader>
-            {bestTrade ? (
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-bold text-white">{bestTrade.pair}</div>
-                    <div className={cn("text-sm font-medium", getBiasColor(bestTrade.direction === "LONG" ? "bullish" : "bearish"))}>
-                      {bestTrade.direction} {bestTrade.setupType.replace("_", " ")}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500">AI Score</div>
-                    <div className="text-lg font-bold text-white">{bestTrade.aiScore}/10</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <StatusBadge status={bestTrade.entryStatus} size="sm" showAction />
-                  <Link href={`/pairs/${bestTrade.pair}`} className="text-sm text-brand-400 hover:text-brand-300">
-                    Open workspace
-                  </Link>
-                </div>
-
-                <p className="text-sm leading-6 text-gray-300">
-                  {bestTrade.aiReasoning || "No detailed reasoning captured yet. Re-run the pair analysis before acting."}
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-6 text-sm text-gray-500">
-                No trade deserves top billing yet. That is fine. "No trade" is still disciplined behavior.
-              </div>
-            )}
+            <CardHeader>Currency Tilt</CardHeader>
+            <p className="mb-3 text-xs text-gray-500">
+              Derived from open exposure. Use as posture check, not a trigger.
+            </p>
+            <CurrencyStrength data={currencyStrength} />
           </Card>
         </div>
       </div>
+
+      {/* ── ROW 5: Accounts + Best trade ── */}
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <Card>
+          <CardHeader>Account Guardrails</CardHeader>
+          <div className="space-y-3">
+            {activeAccounts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
+                No active accounts. Add one in Settings.
+              </div>
+            ) : (
+              activeAccounts.map((account) => {
+                const rules = getAccountRules(account.mode);
+                const dailyLossUsage = account.maxDailyLoss > 0
+                  ? (account.currentDailyLoss / account.maxDailyLoss) * 100
+                  : 0;
+                return (
+                  <div key={account.id} className="rounded-xl border border-white/5 bg-slate-950/30 p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-white">{account.name}</div>
+                        <div className="mt-0.5 text-[11px] uppercase tracking-wide text-gray-500">{account.mode}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[11px] text-gray-500">Balance</div>
+                        <div className="text-sm font-bold text-white">{formatCurrency(account.balance)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <GuardrailPill
+                        label="Trades"
+                        value={`${account.currentDailyTrades}/${rules.maxTradesPerDay}`}
+                        danger={account.currentDailyTrades >= rules.maxTradesPerDay}
+                      />
+                      <GuardrailPill
+                        label="Loss"
+                        value={`${formatCurrency(account.currentDailyLoss)}`}
+                        danger={dailyLossUsage >= 80}
+                      />
+                      <GuardrailPill
+                        label="Streak"
+                        value={`${account.lossesInARow}/${rules.stopAfterConsecutiveLosses}`}
+                        danger={account.lossesInARow >= rules.stopAfterConsecutiveLosses}
+                      />
+                    </div>
+                    <div className="mt-3">
+                      <div className="mb-1 flex justify-between text-[10px] text-gray-600">
+                        <span>Daily loss {Math.round(dailyLossUsage)}%</span>
+                        <span>{formatCurrency(account.maxDailyLoss)} limit</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                        <div
+                          className={cn("h-full rounded-full transition-all duration-500",
+                            dailyLossUsage >= 80 ? "bg-red-500" : dailyLossUsage >= 50 ? "bg-yellow-500" : "bg-green-500"
+                          )}
+                          style={{ width: `${clamp(dailyLossUsage, 0, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>Best Trade on the Board</CardHeader>
+            {bestTrade ? (
+              <div className="space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-lg font-bold text-white">{bestTrade.pair}</div>
+                    <div className={cn("text-sm font-medium", getBiasColor(bestTrade.direction === "LONG" ? "bullish" : "bearish"))}>
+                      {bestTrade.direction} · {bestTrade.setupType.replace("_", " ")}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white/5 px-3 py-2 text-center">
+                    <div className="text-[10px] text-gray-500">Score</div>
+                    <div className="text-lg font-bold text-white">{bestTrade.aiScore}/10</div>
+                  </div>
+                </div>
+                <StatusBadge status={bestTrade.entryStatus} size="sm" showAction />
+                <p className="text-sm leading-6 text-gray-400">
+                  {bestTrade.aiReasoning || "Re-run analysis for updated reasoning."}
+                </p>
+                <Link href={`/pairs/${bestTrade.pair}`} className="inline-block text-sm text-brand-400 hover:text-brand-300">
+                  Open workspace →
+                </Link>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
+                No trades on the board yet. Run pair analysis to surface setups.
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>Active Setups</CardHeader>
+            <ActiveSetups setups={activeSetups} />
+          </Card>
+        </div>
+      </div>
+
+      {/* ── ROW 6: Daily plan + Performance ── */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DailyPlanCard />
+        <DashboardPerformanceChart trades={trades} />
+      </div>
+
+      {/* ── ROW 7: News impact + Trade manager ── */}
+      <NewsImpactChart events={newsEvents} />
 
       <TradeManager
         trades={trades}
@@ -780,29 +750,21 @@ export default function DashboardPage() {
   );
 }
 
-function MetricPill({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
+function KpiCard({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-950/25 px-4 py-3">
-      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
-      <div className="mt-2 text-lg font-semibold text-white">{value}</div>
-      <div className="mt-1 text-sm text-slate-400">{detail}</div>
+    <div className="rounded-2xl border border-white/8 bg-slate-950/30 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">{label}</div>
+      <div className={cn("mt-1.5 text-xl font-bold", color)}>{value}</div>
+      <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>
     </div>
   );
 }
 
-function AccountMetric({ label, value }: { label: string; value: string }) {
+function GuardrailPill({ label, value, danger }: { label: string; value: string; danger: boolean }) {
   return (
-    <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+    <div className={cn("rounded-lg px-2 py-1.5 text-center", danger ? "bg-red-500/10 border border-red-500/20" : "bg-white/5")}>
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={cn("mt-0.5 text-xs font-semibold", danger ? "text-red-400" : "text-white")}>{value}</div>
     </div>
   );
 }
