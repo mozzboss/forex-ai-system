@@ -16,8 +16,8 @@ import {
 } from "@/components/dashboard";
 import { TradeManager } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
-import { ALL_PAIRS, MAJOR_PAIRS, TRADING_CONFIG, getAccountRules } from "@/config/trading";
-import { useAccounts, useAuth } from "@/hooks";
+import { TRADING_CONFIG, getAccountRules } from "@/config/trading";
+import { useAccounts, useAuth, useTrackedPairs } from "@/hooks";
 import { MarketTimeframe } from "@/lib/market/timeframes";
 import { cn, formatCurrency, formatPercent, getBiasColor, isWithinSession } from "@/lib/utils";
 import type {
@@ -81,6 +81,10 @@ function startOfToday(date: Date) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function uniquePairs(pairs: CurrencyPair[]) {
+  return Array.from(new Set(pairs));
 }
 
 function getSessionSnapshot(now: Date) {
@@ -169,7 +173,7 @@ function deriveCurrencyStrength(trades: Trade[]) {
   ) as Record<Currency, number>;
 }
 
-function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[]) {
+function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[], trackedPairs: CurrencyPair[]) {
   const activeTradeByPair = new Map<CurrencyPair, Trade>();
   for (const trade of trades) {
     const existing = activeTradeByPair.get(trade.pair);
@@ -178,7 +182,7 @@ function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[]) {
     }
   }
 
-  return ALL_PAIRS.map((pair) => {
+  return uniquePairs([...trackedPairs, ...Array.from(activeTradeByPair.keys())]).map((pair) => {
     const trade = activeTradeByPair.get(pair);
     if (trade) {
       return {
@@ -343,6 +347,12 @@ function deriveDashboardDecisionState({
 export default function DashboardPage() {
   const { authFetch, user } = useAuth();
   const { accounts, loading: accountsLoading, error: accountError, refetch } = useAccounts();
+  const {
+    trackedPairs,
+    loading: trackedPairsLoading,
+    error: trackedPairsError,
+    refetch: refetchTrackedPairs,
+  } = useTrackedPairs();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
   const [marketSnapshots, setMarketSnapshots] = useState<DashboardMarketSnapshot[]>([]);
@@ -384,6 +394,17 @@ export default function DashboardPage() {
   }, [authFetch, user]);
 
   // Fetch market snapshots — reruns when timeframe changes (no trade/news reload)
+  const dashboardPairs = useMemo(
+    () =>
+      uniquePairs([
+        ...trackedPairs,
+        ...trades
+          .filter((trade) => trade.status === "pending" || trade.status === "open")
+          .map((trade) => trade.pair),
+      ]),
+    [trackedPairs, trades]
+  );
+
   const refreshMarketSnapshots = useCallback(async () => {
     if (!user) {
       setMarketSnapshots([]);
@@ -391,8 +412,14 @@ export default function DashboardPage() {
       return;
     }
 
+    if (dashboardPairs.length === 0) {
+      setMarketSnapshots([]);
+      setMarketError(null);
+      return;
+    }
+
     const marketResults = await Promise.allSettled(
-      MAJOR_PAIRS.map(async (pair) => {
+      dashboardPairs.map(async (pair) => {
         const snapshotUrl = `/api/market?pair=${pair}&timeframe=${marketTimeframe}`;
         const response = await authFetch(snapshotUrl);
         const payload = await response.json();
@@ -411,7 +438,7 @@ export default function DashboardPage() {
         ? "Market snapshots are unavailable right now. News context is still live."
         : null
     );
-  }, [authFetch, marketTimeframe, user]);
+  }, [authFetch, dashboardPairs, marketTimeframe, user]);
 
   const refreshDashboard = useCallback(async () => {
     await Promise.all([refreshTradesAndNews(), refreshMarketSnapshots()]);
@@ -426,7 +453,7 @@ export default function DashboardPage() {
   }, [refreshMarketSnapshots]);
 
   const refreshAll = async () => {
-    await Promise.all([refetch(), refreshDashboard()]);
+    await Promise.all([refetch(), refetchTrackedPairs(), refreshDashboard()]);
   };
 
   const activeAccounts = useMemo(
@@ -463,7 +490,10 @@ export default function DashboardPage() {
   }, [activeAccounts, newsEvents, trades]);
 
   const currencyStrength = useMemo(() => deriveCurrencyStrength(trades), [trades]);
-  const heatmap = useMemo(() => buildHeatmap(trades, newsEvents), [newsEvents, trades]);
+  const heatmap = useMemo(
+    () => buildHeatmap(trades, newsEvents, trackedPairs),
+    [newsEvents, trackedPairs, trades]
+  );
   const activeSetups = useMemo(() => buildActiveSetups(trades), [trades]);
 
   const bestTrade = useMemo(() => {
@@ -522,7 +552,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricPill
             label="Active Accounts"
             value={activeAccounts.length.toString()}
@@ -534,6 +564,11 @@ export default function DashboardPage() {
             detail="30-minute buffer still applies before every planned trade"
           />
           <MetricPill
+            label="Tracked Pairs"
+            value={trackedPairsLoading ? "..." : dashboardPairs.length.toString()}
+            detail="personal universe feeding the dashboard and planning flow"
+          />
+          <MetricPill
             label="Execution Rule"
             value="CONFIRMED Only"
             detail="WAIT and READY are preparation states, never entry signals"
@@ -541,9 +576,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {accountError || pageError ? (
+      {accountError || trackedPairsError || pageError ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {accountError || pageError}
+          {accountError || trackedPairsError || pageError}
         </div>
       ) : null}
 

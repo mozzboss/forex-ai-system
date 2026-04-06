@@ -19,17 +19,16 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getPairCandidates(context: DailyPlanContext): CurrencyPair[] {
+  const trackedPairs = uniquePairs(context.trackedPairs);
   const activePairs = context.openTrades.map((trade) => trade.pair);
   const eventCurrencies = context.upcomingEvents.map((event) => event.currency);
-  const eventPairs = ALL_PAIRS.filter((pair) => {
+  const eventPairs = trackedPairs.filter((pair) => {
     const base = pair.slice(0, 3);
     const quote = pair.slice(3, 6);
     return eventCurrencies.includes(base as NewsEvent["currency"]) || eventCurrencies.includes(quote as NewsEvent["currency"]);
   });
 
-  const fallbackPairs: CurrencyPair[] = ["EURUSD", "GBPUSD", "XAUUSD", "USDJPY", "AUDUSD"];
-
-  return uniquePairs([...activePairs, ...eventPairs, ...fallbackPairs]).slice(0, TRADING_CONFIG.maxWatchlistPairs);
+  return uniquePairs([...activePairs, ...eventPairs, ...trackedPairs]).slice(0, TRADING_CONFIG.maxWatchlistPairs);
 }
 
 function formatEvent(event: NewsEvent) {
@@ -51,6 +50,7 @@ function buildFallbackPlan(context: DailyPlanContext): GeneratedDailyPlan {
   const watchlist = getPairCandidates(context);
   const highImpactEvents = context.upcomingEvents.filter((event) => event.impact === "high");
   const maxTrades = clamp(getPreferredMaxTrades(context), 1, 3);
+  const noTrackedPairs = watchlist.length === 0;
   const sessionFocus = highImpactEvents.length > 0
     ? "Wait until high-impact releases clear and only focus on clean London or New York continuation setups."
     : "Prioritize London and overlap session structure. Stay patient if the market opens messy.";
@@ -63,12 +63,16 @@ function buildFallbackPlan(context: DailyPlanContext): GeneratedDailyPlan {
     date: context.date,
     pairs: watchlist,
     macroBias:
-      highImpactEvents.length > 0
+      noTrackedPairs
+        ? "No tracked pairs are selected yet. Build your pair universe in Settings before leaning on the morning plan."
+        : highImpactEvents.length > 0
         ? `News-heavy session. Bias should stay flexible until ${highImpactEvents[0].currency} ${highImpactEvents[0].event} is out of the way.`
         : "Moderate conviction session. Favor continuation over prediction and let clean structure lead.",
-    keyLevels: watchlist
-      .map((pair) => `${pair}: mark prior day high and low, session range extremes, and nearest H4 structure before execution.`)
-      .join(" "),
+    keyLevels: noTrackedPairs
+      ? "No tracked pairs selected. Add pairs in Settings, then mark prior day highs/lows and H4 structure before the session."
+      : watchlist
+        .map((pair) => `${pair}: mark prior day high and low, session range extremes, and nearest H4 structure before execution.`)
+        .join(" "),
     newsEvents:
       highImpactEvents.length > 0
         ? highImpactEvents.slice(0, 3).map(formatEvent).join(" | ")
@@ -78,8 +82,9 @@ function buildFallbackPlan(context: DailyPlanContext): GeneratedDailyPlan {
     planNotes: [
       `Watchlist: ${watchlist.join(", ") || "none selected"}.`,
       `Max planned executions today: ${maxTrades}.`,
+      noTrackedPairs ? "Add tracked pairs in Settings before relying on this plan." : "",
       priorReviewFocus,
-    ].join(" "),
+    ].filter(Boolean).join(" "),
   };
 }
 
@@ -113,6 +118,7 @@ function serializePlanContext(context: DailyPlanContext) {
         event: event.event,
         impact: event.impact,
       })),
+      trackedPairs: context.trackedPairs,
       priorReview: context.priorReview
         ? {
             disciplineScore: context.priorReview.disciplineScore,
@@ -182,6 +188,7 @@ export async function generateDailyPlan(context: DailyPlanContext): Promise<Gene
     "Rules:",
     "- No more than 3 watchlist pairs.",
     "- Keep maxTrades between 1 and 3.",
+    "- Only use trackedPairs from the provided context, unless an open trade already exists on a pair.",
     "- If news is heavy, explicitly slow the trader down.",
     "- Mention CONFIRMED-only execution logic implicitly or explicitly.",
     "- Use today's context only. Do not invent price levels or macro facts you were not given.",

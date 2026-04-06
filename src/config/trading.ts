@@ -81,3 +81,21 @@ export const MAJOR_PAIRS: CurrencyPair[] = [
 export const CROSS_PAIRS: CurrencyPair[] = [];
 
 export const ALL_PAIRS: CurrencyPair[] = [...MAJOR_PAIRS, ...CROSS_PAIRS];
+
+export const DEFAULT_TRACKED_PAIRS: CurrencyPair[] = [...MAJOR_PAIRS];
+
+export function isCurrencyPair(value: string): value is CurrencyPair {
+  return ALL_PAIRS.includes(value as CurrencyPair);
+}
+
+export function normalizeTrackedPairs(values?: readonly string[] | null): CurrencyPair[] {
+  if (!values) {
+    return [];
+  }
+
+  const normalized = values
+    .map((value) => value.trim().toUpperCase())
+    .filter((value): value is CurrencyPair => isCurrencyPair(value));
+
+  return Array.from(new Set(normalized));
+}

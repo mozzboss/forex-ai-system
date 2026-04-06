@@ -246,5 +246,9 @@ export const dailyPlanActionSchema = z.object({
   sendTelegram: z.boolean().optional(),
 });
 
+export const trackedPairsPreferenceSchema = z.object({
+  pairs: z.array(currencyPairSchema).max(currencyPairValues.length),
+});
+
 export const queryTradeStatusSchema = tradeStatusSchema;
 export const queryJournalEntryTypeSchema = journalEntryTypeSchema;

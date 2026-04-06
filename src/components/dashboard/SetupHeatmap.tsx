@@ -19,6 +19,14 @@ interface SetupHeatmapProps {
 export function SetupHeatmap({ data }: SetupHeatmapProps) {
   const sorted = [...data].sort((a, b) => b.score - a.score);
 
+  if (sorted.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-6 text-sm text-gray-500">
+        No tracked pairs yet. Add symbols in Settings to bring the heatmap back.
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-3 gap-1.5">
       {sorted.map(({ pair, score, bias }) => {

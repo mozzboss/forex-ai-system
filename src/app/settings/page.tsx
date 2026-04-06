@@ -2,8 +2,9 @@
 
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import { useAccounts, useAuth } from "@/hooks";
-import { AccountMode, TelegramConnectionStatus, TradingAccount } from "@/types";
+import { ALL_PAIRS } from "@/config/trading";
+import { useAccounts, useAuth, useTrackedPairs } from "@/hooks";
+import { AccountMode, CurrencyPair, TelegramConnectionStatus, TradingAccount } from "@/types";
 import { Button, Card, CardHeader } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 
@@ -99,6 +100,13 @@ export default function SettingsPage() {
     createAccount,
     updateAccount,
   } = useAccounts();
+  const {
+    trackedPairs,
+    loading: trackedPairsLoading,
+    saving: trackedPairsSaving,
+    error: trackedPairsError,
+    saveTrackedPairs,
+  } = useTrackedPairs();
   const [drafts, setDrafts] = useState<Record<string, AccountDraft>>({});
   const [newDraft, setNewDraft] = useState<AccountDraft | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -309,6 +317,17 @@ export default function SettingsPage() {
     }
   }, [authFetch, mtPayload, refetch]);
 
+  const handleTrackedPairToggle = useCallback(
+    async (pair: CurrencyPair) => {
+      const nextPairs = trackedPairs.includes(pair)
+        ? trackedPairs.filter((trackedPair) => trackedPair !== pair)
+        : [...trackedPairs, pair];
+
+      await saveTrackedPairs(nextPairs);
+    },
+    [saveTrackedPairs, trackedPairs]
+  );
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <section className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.16),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,1),_rgba(30,41,59,0.96))] p-5 sm:p-6">
@@ -418,6 +437,79 @@ export default function SettingsPage() {
         </Card>
 
         <div className="space-y-6">
+          <Card>
+            <div id="tracked-pairs" className="scroll-mt-24" />
+            <CardHeader>Tracked Pair Universe</CardHeader>
+            <p className="mb-4 text-sm leading-6 text-gray-400">
+              Add or remove pairs from your personal universe. The dashboard, pair workspace, and morning plan
+              will all follow this list, while the daily plan still narrows execution down to the best three.
+            </p>
+
+            <div className="rounded-2xl border border-white/10 bg-[linear-gradient(135deg,_rgba(30,41,59,0.95),_rgba(15,23,42,0.92))] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-medium text-white">
+                    {trackedPairsLoading ? "Loading tracked pairs..." : `${trackedPairs.length} pairs tracked`}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Click any symbol to add it or remove it instantly.
+                  </div>
+                </div>
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  {trackedPairsSaving ? "Saving..." : "Saved to your account"}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {ALL_PAIRS.map((pair) => {
+                  const isSelected = trackedPairs.includes(pair);
+
+                  return (
+                    <button
+                      key={pair}
+                      type="button"
+                      onClick={() => handleTrackedPairToggle(pair)}
+                      disabled={trackedPairsSaving}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition-colors ${
+                        isSelected
+                          ? "border-green-400/40 bg-green-500/15 text-green-200"
+                          : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {isSelected ? `Remove ${pair}` : `Add ${pair}`}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Active list</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {trackedPairs.length > 0 ? (
+                    trackedPairs.map((pair) => (
+                      <span
+                        key={pair}
+                        className="rounded-full border border-brand-500/20 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-brand-200"
+                      >
+                        {pair}
+                      </span>
+                    ))
+                  ) : (
+                    <div className="text-sm text-slate-400">
+                      No pairs tracked right now. Add at least one symbol to rebuild the workspace.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {trackedPairsError ? (
+              <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {trackedPairsError}
+              </div>
+            ) : null}
+          </Card>
+
           <Card>
             <CardHeader>Alert Preferences</CardHeader>
             <div className="space-y-3">

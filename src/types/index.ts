@@ -322,6 +322,7 @@ export interface DailyPlanContext {
   accounts: TradingAccount[];
   openTrades: Trade[];
   upcomingEvents: NewsEvent[];
+  trackedPairs: CurrencyPair[];
   priorReview?: EndOfDayReview | null;
 }
 
@@ -359,4 +360,8 @@ export interface TelegramConnectionStatus {
   linkCode?: string;
   linkCodeExpiresAt?: Date;
   alertsEnabled: boolean;
+}
+
+export interface TrackedPairsPreference {
+  trackedPairs: CurrencyPair[];
 }

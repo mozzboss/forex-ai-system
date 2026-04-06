@@ -2,6 +2,7 @@ import {
   createAccount,
   createJournalEntry,
   createTrade,
+  getTrackedPairs,
   denyTrade,
   getAccountName,
   getAccountSnapshot,
@@ -10,6 +11,7 @@ import {
   listJournalEntries,
   listTrades,
   resetDailyAccountCounters,
+  updateTrackedPairs,
   updateAccount,
   updateTrade,
 } from "@/lib/server/persistence";
@@ -28,6 +30,12 @@ export const journalRouteDeps = {
   requireAppUserId,
   listJournalEntries,
   createJournalEntry,
+};
+
+export const pairPreferencesRouteDeps = {
+  requireAppUserId,
+  getTrackedPairs,
+  updateTrackedPairs,
 };
 
 export const tradeRouteDeps = {

@@ -1,0 +1,11 @@
+ALTER TABLE "User"
+ADD COLUMN "trackedPairs" TEXT[] NOT NULL DEFAULT ARRAY[
+  'EURUSD',
+  'GBPUSD',
+  'USDJPY',
+  'USDCHF',
+  'AUDUSD',
+  'NZDUSD',
+  'USDCAD',
+  'XAUUSD'
+]::TEXT[];
