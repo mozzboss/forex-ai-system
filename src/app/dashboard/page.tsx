@@ -13,6 +13,7 @@ import {
   NewsImpactChart,
   NewsCountdown,
   SetupHeatmap,
+  SessionClock,
 } from "@/components/dashboard";
 import { TradeManager } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
@@ -535,12 +536,8 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 xl:min-w-[320px]">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Current Session</div>
-              <div className={cn("mt-2 text-lg font-semibold", session.tone)}>{session.label}</div>
-              <p className="mt-2 text-sm text-slate-300">{session.detail}</p>
-            </div>
+          <div className="flex flex-col gap-3 xl:min-w-[340px]">
+            <SessionClock />
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button variant="secondary" onClick={refreshAll} disabled={accountsLoading || refreshing} className="w-full sm:w-auto">
                 {refreshing ? "Refreshing..." : "Refresh Dashboard"}

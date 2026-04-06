@@ -7,3 +7,4 @@ export { NewsImpactChart } from "./NewsImpactChart";
 export { DailyStats, DailyStatsPlaceholder } from "./DailyStats";
 export { ActiveSetups, ActiveSetupsPlaceholder } from "./ActiveSetups";
 export { DailyPlanCard } from "./DailyPlanCard";
+export { SessionClock } from "./SessionClock";
