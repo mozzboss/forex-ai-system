@@ -45,9 +45,9 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
 
   const rawMessage = providerMessage || (error instanceof Error ? error.message : "");
 
-  if (rawMessage === "ANTHROPIC_API_KEY is not set") {
+  if (/ANTHROPIC_API_KEY is not set/i.test(rawMessage)) {
     return {
-      message: "ANTHROPIC_API_KEY is missing. Add it to .env.local before running pair analysis.",
+      message: "ANTHROPIC_API_KEY is missing. Add it to Vercel environment variables and redeploy.",
       status: 503,
     };
   }
@@ -73,6 +73,20 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
     };
   }
 
+  if (/prisma|database|db|connection|ECONNREFUSED|ETIMEDOUT/i.test(rawMessage)) {
+    return {
+      message: "Database connection failed during analysis. Check DATABASE_URL in Vercel environment variables.",
+      status: 503,
+    };
+  }
+
+  if (/JSON|parse|unexpected token/i.test(rawMessage)) {
+    return {
+      message: "AI response could not be parsed. This is usually transient — try again in a moment.",
+      status: 502,
+    };
+  }
+
   if (providerMessage) {
     return {
       message: providerMessage,
@@ -81,7 +95,7 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
   }
 
   return {
-    message: "Analysis failed. Capital protection mode: do not trade.",
+    message: `Analysis failed: ${rawMessage || "unknown error"}. Capital protection mode: do not trade.`,
     status,
   };
 }
@@ -204,7 +218,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    console.error("Analysis error:", error);
+    const rawErr = error instanceof Error ? error.message : String(error);
+    console.error("Analysis error:", rawErr, error);
     const failure = getAnalysisErrorDetails(error);
     return NextResponse.json(
       { error: failure.message },
