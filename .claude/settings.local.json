@@ -11,7 +11,10 @@
       "Bash(xargs wc:*)",
       "Bash(node -e \"require\\('@supabase/ssr'\\); console.log\\('ok'\\)\")",
       "Bash(npx tsc:*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }
