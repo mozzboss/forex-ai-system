@@ -24,8 +24,58 @@ export function AnalysisDisplay({ analysis, denials, accountNames }: AnalysisDis
     riskPerAccount,
   } = analysis;
 
+  const isBuy = finalDecision.decision === "TAKE_TRADE" && tradeSetup?.direction === "LONG";
+  const isSell = finalDecision.decision === "TAKE_TRADE" && tradeSetup?.direction === "SHORT";
+  const isWait = finalDecision.decision === "WAIT";
+
   return (
     <div className="space-y-4">
+
+      {/* Primary signal — first thing user sees */}
+      <div className={cn(
+        "rounded-2xl border-2 p-5 text-center",
+        isBuy  ? "border-green-500/50 bg-green-500/10" :
+        isSell ? "border-red-500/50 bg-red-500/10" :
+        isWait ? "border-yellow-500/40 bg-yellow-500/8" :
+                 "border-white/10 bg-surface"
+      )}>
+        <div className="text-xs uppercase tracking-[0.22em] text-slate-400 mb-2">Signal</div>
+        <div className={cn(
+          "text-5xl font-black tracking-tight",
+          isBuy  ? "text-green-400" :
+          isSell ? "text-red-400" :
+          isWait ? "text-yellow-400" :
+                   "text-slate-500"
+        )}>
+          {isBuy ? "BUY" : isSell ? "SELL" : isWait ? "WAIT" : "NO TRADE"}
+        </div>
+
+        {tradeSetup && (isBuy || isSell) && (
+          <div className="mt-3 flex flex-wrap justify-center gap-3 text-sm">
+            <span className="rounded-lg bg-white/5 px-3 py-1.5 font-mono">
+              Entry <span className="text-white font-semibold">{tradeSetup.entryZone.low} – {tradeSetup.entryZone.high}</span>
+            </span>
+            <span className="rounded-lg bg-red-500/10 px-3 py-1.5 font-mono">
+              SL <span className="text-red-400 font-semibold">{tradeSetup.stopLoss}</span>
+            </span>
+            <span className="rounded-lg bg-green-500/10 px-3 py-1.5 font-mono">
+              TP <span className="text-green-400 font-semibold">{tradeSetup.takeProfit}</span>
+            </span>
+            <span className="rounded-lg bg-white/5 px-3 py-1.5 font-mono">
+              Score <span className="text-white font-semibold">{finalDecision.score}/10</span>
+            </span>
+          </div>
+        )}
+
+        {!tradeSetup && (
+          <div className="mt-2 text-sm text-slate-400">{finalDecision.reasoning}</div>
+        )}
+
+        {tradeSetup && (isBuy || isSell) && (
+          <div className="mt-3 text-xs text-slate-400 max-w-md mx-auto">{tradeSetup.confirmation}</div>
+        )}
+      </div>
+
       <Section title="Market Overview">
         <Row label="Bias" value={marketOverview.bias.toUpperCase()} className={getBiasColor(marketOverview.bias)} />
         <Row label="Structure" value={marketOverview.structure} />
