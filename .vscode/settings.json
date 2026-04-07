@@ -1,0 +1,5 @@
+{
+  // Point the Prisma VS Code extension at the workspace Prisma CLI (v5.22)
+  // to silence the Prisma 6/7 preview diagnostics about datasource.url/directUrl.
+  "prisma.languageServerPath": "node_modules/.bin/prisma"
+}

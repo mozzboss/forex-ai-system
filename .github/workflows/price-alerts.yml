@@ -1,0 +1,17 @@
+name: Price Alert Check
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:         # allow manual trigger
+
+jobs:
+  check-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping alert check endpoint
+        run: |
+          curl -sf -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://forex-ai-system.vercel.app/api/alerts/check" \
+            || echo "Alert check failed or no alerts"
