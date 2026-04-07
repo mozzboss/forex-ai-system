@@ -10,15 +10,7 @@ export const runtime = "nodejs";
 
 // Called by Vercel Cron every 5 minutes.
 // Also callable manually: GET /api/alerts/check
-export async function GET(req: NextRequest) {
-  // Verify cron secret if set (Vercel automatically sends this header)
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+export async function GET(_req: NextRequest) {
 
   if (!process.env.TWELVE_DATA_API_KEY) {
     return NextResponse.json({ skipped: true, reason: "No TwelveData key" });
