@@ -844,24 +844,30 @@ export default function PairPage({ params }: { params: { pair: string } }) {
       </div>
 
       {activeTab === "market" ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_360px]">
+        <div className="space-y-6">
+
+          {/* ── Full-width chart row ── */}
           <Card>
-            <CardHeader>Market Workspace</CardHeader>
-            <p className="text-sm leading-6 text-gray-400">
-              Read structure first, then add your notes and run the full workflow. The chart highlights swings and break-of-structure cues so the setup is easier to audit.
-            </p>
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-surface-light p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Live Market Snapshot
-                </div>
-                <div className="text-xs text-gray-500">
-                  {marketLoading ? "Refreshing..." : marketSnapshot?.source || "unavailable"}
-                </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Live Chart</div>
+                {marketSnapshot && (
+                  <div className="mt-1 flex items-baseline gap-3">
+                    <span className="text-2xl font-bold font-mono text-white">
+                      {marketSnapshot.price.toFixed(getPricePrecision(pair))}
+                    </span>
+                    {typeof marketSnapshot.change === "number" && (
+                      <span className={cn("text-sm font-semibold", (marketSnapshot.change) >= 0 ? "text-green-400" : "text-red-400")}>
+                        {marketSnapshot.change >= 0 ? "+" : ""}{marketSnapshot.change.toFixed(getPricePrecision(pair))} ({marketSnapshot.percentChange || 0}%)
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-500">
+                      {marketSnapshot.fallback ? "fallback" : "live"} · {new Date(marketSnapshot.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                )}
               </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {MARKET_TIMEFRAMES.map((option) => (
                   <button
                     key={option}
@@ -878,96 +884,83 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                   </button>
                 ))}
               </div>
+            </div>
 
-              {marketError ? (
-                <p className="mt-3 text-sm text-red-300">{marketError}</p>
-              ) : marketSnapshot ? (
-                <>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <AccountLine label="Price" value={marketSnapshot.price.toFixed(getPricePrecision(pair))} />
-                    <AccountLine label="Open" value={marketSnapshot.open.toFixed(getPricePrecision(pair))} />
-                    <AccountLine label="High" value={marketSnapshot.high.toFixed(getPricePrecision(pair))} />
-                    <AccountLine label="Low" value={marketSnapshot.low.toFixed(getPricePrecision(pair))} />
-                  </div>
+            {marketError ? (
+              <p className="mt-4 text-sm text-red-300">{marketError}</p>
+            ) : marketSnapshot ? (
+              <>
+                {marketSnapshot.bars.length > 0 ? (
+                  <CandlestickChart
+                    pair={pair}
+                    bars={marketSnapshot.bars}
+                    timeframe={marketSnapshot.timeframe}
+                    overlays={chartOverlays}
+                    zones={chartZones}
+                    markers={chartMarkers}
+                    showSessions
+                    showLiquiditySweeps
+                    className="mt-4"
+                  />
+                ) : null}
 
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                    <span>
-                      Change{" "}
-                      <span className={(marketSnapshot.change || 0) >= 0 ? "text-green-400" : "text-red-400"}>
-                        {typeof marketSnapshot.change === "number"
-                          ? `${marketSnapshot.change.toFixed(getPricePrecision(pair))} (${marketSnapshot.percentChange || 0}%)`
-                          : "n/a"}
-                      </span>
-                    </span>
-                    <span>
-                      As of{" "}
-                      {new Date(marketSnapshot.asOf).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span>{marketSnapshot.fallback ? "Fallback data" : "Provider live feed"}</span>
-                  </div>
-
-                  {marketSnapshot.bars.length > 0 ? (
-                    <CandlestickChart
-                      pair={pair}
-                      bars={marketSnapshot.bars}
-                      timeframe={marketSnapshot.timeframe}
-                      overlays={chartOverlays}
-                      zones={chartZones}
-                      markers={chartMarkers}
-                      showSessions
-                      showLiquiditySweeps
-                      className="mt-4"
-                    />
-                  ) : null}
-
-                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                    <SummaryPill
-                      label="Structure Bias"
-                      value={marketStructure?.bias || "neutral"}
-                      tone={
-                        marketStructure?.bias === "bullish"
-                          ? "text-green-300"
-                          : marketStructure?.bias === "bearish"
-                            ? "text-red-300"
-                            : "text-slate-200"
-                      }
-                    />
-                    <SummaryPill
-                      label="Latest Break"
-                      value={latestStructureEvent?.kind || "None"}
-                      tone={latestStructureEvent?.kind === "CHOCH" ? "text-purple-300" : "text-cyan-300"}
-                    />
-                    <SummaryPill
-                      label="HTF Cue"
-                      value={marketStructure?.htfSupport && marketStructure?.htfResistance ? "Bands mapped" : "Developing"}
-                      tone="text-slate-200"
-                    />
-                  </div>
+                <div className="mt-3 grid grid-cols-4 gap-2 border-t border-white/5 pt-3">
+                  <AccountLine label="Open" value={marketSnapshot.open.toFixed(getPricePrecision(pair))} />
+                  <AccountLine label="High" value={marketSnapshot.high.toFixed(getPricePrecision(pair))} />
+                  <AccountLine label="Low" value={marketSnapshot.low.toFixed(getPricePrecision(pair))} />
+                  <AccountLine label="Prev Close" value={(marketSnapshot.previousClose ?? marketSnapshot.open).toFixed(getPricePrecision(pair))} />
+                </div>
 
                   {marketStructure ? (
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/25 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Structure Read
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-gray-300">{marketStructure.summary}</p>
-                      {marketStructure.events.length > 0 ? (
-                        <div className="mt-4 grid gap-3 md:grid-cols-3">
-                          {marketStructure.events.map((event) => (
-                            <StructureEventCard key={`${event.kind}-${event.time}`} event={event} />
-                          ))}
-                        </div>
-                      ) : null}
+                    <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/5 pt-3">
+                      <SummaryPill
+                        label="Structure"
+                        value={marketStructure?.bias || "neutral"}
+                        tone={
+                          marketStructure?.bias === "bullish"
+                            ? "text-green-300"
+                            : marketStructure?.bias === "bearish"
+                              ? "text-red-300"
+                              : "text-slate-200"
+                        }
+                      />
+                      <SummaryPill
+                        label="Latest Break"
+                        value={latestStructureEvent?.kind || "None"}
+                        tone={latestStructureEvent?.kind === "CHOCH" ? "text-purple-300" : "text-cyan-300"}
+                      />
+                      <SummaryPill
+                        label="HTF Bands"
+                        value={marketStructure?.htfSupport && marketStructure?.htfResistance ? "Mapped" : "Developing"}
+                        tone="text-slate-200"
+                      />
                     </div>
                   ) : null}
-                </>
-              ) : (
-                <p className="mt-3 text-sm text-gray-500">No market snapshot loaded yet.</p>
+              </>
+            ) : marketLoading ? (
+              <p className="mt-4 text-sm text-gray-500">Loading chart...</p>
+            ) : (
+              <p className="mt-4 text-sm text-gray-500">No market snapshot loaded yet.</p>
+            )}
+          </Card>
+
+          {/* ── Two-column grid: structure details + run analysis ── */}
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_360px]">
+            <div className="space-y-4">
+              {marketStructure && (
+                <Card>
+                  <CardHeader>Structure Read</CardHeader>
+                  <p className="text-sm leading-6 text-gray-300">{marketStructure.summary}</p>
+                  {marketStructure.events.length > 0 ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      {marketStructure.events.map((event) => (
+                        <StructureEventCard key={`${event.kind}-${event.time}`} event={event} />
+                      ))}
+                    </div>
+                  ) : null}
+                </Card>
               )}
             </div>
-          </Card>
 
           <div className="space-y-4">
             <Card>
@@ -1071,6 +1064,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
             </Card>
 
             <PriceAlertCard pair={pair} currentPrice={marketSnapshot?.price} authFetch={authFetch} />
+          </div>
           </div>
         </div>
       ) : null}
