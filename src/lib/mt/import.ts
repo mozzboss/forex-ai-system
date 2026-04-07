@@ -3,6 +3,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { CurrencyPair, TradeDirection, TradeStatus } from "@/types";
 
+// MT5 TimeToString outputs "2026.04.06 14:30:00" — not valid ISO 8601.
+// Replace dots in the date part with dashes so new Date() parses correctly.
+function parseMtDate(value: string | Date | undefined): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return isNaN(value.getTime()) ? undefined : value;
+  const iso = value.replace(/^(\d{4})\.(\d{2})\.(\d{2})/, "$1-$2-$3");
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 export interface MtImportDeps {
   findAccount: (
     userId: string,
@@ -112,8 +122,8 @@ export async function importMtPositions(
         aiReasoning: "Imported from MetaTrader for audit.",
         denialReason: position.status === "denied" ? "weak_setup" : null,
         notes: position.notes ?? `Imported from MetaTrader ticket ${position.externalRef}.`,
-        openedAt: position.openedAt ? new Date(position.openedAt) : undefined,
-        closedAt: position.closedAt ? new Date(position.closedAt) : undefined,
+        openedAt: parseMtDate(position.openedAt),
+        closedAt: parseMtDate(position.closedAt),
       };
 
       const existing = await deps.findExistingTrade(position.externalRef);
@@ -158,7 +168,7 @@ async function defaultFindAccount(
       userId,
       OR: [
         position.accountId ? { id: position.accountId } : undefined,
-        position.accountName ? { name: position.accountName } : undefined,
+        position.accountName ? { name: { equals: position.accountName, mode: "insensitive" } } : undefined,
       ].filter(Boolean) as Prisma.TradingAccountWhereInput[],
     },
     select: {
