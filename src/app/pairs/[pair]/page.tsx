@@ -1069,6 +1069,8 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 <InfoPanel title="Execution last" detail="Only record the trade after the setup is CONFIRMED and every denial check stays clear." />
               </div>
             </Card>
+
+            <PriceAlertCard pair={pair} currentPrice={marketSnapshot?.price} authFetch={authFetch} />
           </div>
         </div>
       ) : null}
@@ -1700,5 +1702,132 @@ function StructureEventCard({ event }: { event: StructureEvent }) {
         })}
       </div>
     </div>
+  );
+}
+
+// ── Price Alert Card ─────────────────────────────────────────────────────────
+
+interface PriceAlertRow {
+  id: string;
+  pair: string;
+  targetPrice: string;
+  condition: string;
+  note: string | null;
+  triggered: boolean;
+  createdAt: string;
+}
+
+function PriceAlertCard({
+  pair,
+  currentPrice,
+  authFetch,
+}: {
+  pair: CurrencyPair;
+  currentPrice?: number;
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>;
+}) {
+  const precision = getPricePrecision(pair);
+  const [alerts, setAlerts] = useState<PriceAlertRow[]>([]);
+  const [price, setPrice] = useState(currentPrice ? currentPrice.toFixed(precision) : "");
+  const [condition, setCondition] = useState<"above" | "below">("above");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrice(currentPrice ? currentPrice.toFixed(precision) : "");
+  }, [currentPrice, precision]);
+
+  useEffect(() => {
+    authFetch(`/api/alerts?pair=${pair}`)
+      .then((r) => r.ok ? r.json() : { alerts: [] })
+      .then((d) => setAlerts(d.alerts || []))
+      .catch(() => {});
+  }, [pair, authFetch]);
+
+  const create = async () => {
+    const target = Number(price);
+    if (!isFinite(target) || target <= 0) { setError("Enter a valid price."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await authFetch("/api/alerts", {
+        method: "POST",
+        body: JSON.stringify({ pair, targetPrice: target, condition, note: note.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setAlerts((prev) => [data.alert, ...prev]);
+      setNote("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create alert");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    await authFetch(`/api/alerts?id=${id}`, { method: "DELETE" });
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  return (
+    <Card>
+      <CardHeader>Price Alerts</CardHeader>
+      <p className="mb-4 text-xs text-gray-500">
+        Get a Telegram notification when price crosses your level. Checked every 5 minutes.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <select
+            value={condition}
+            onChange={(e) => setCondition(e.target.value as "above" | "below")}
+            className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+          >
+            <option value="above">Price goes above</option>
+            <option value="below">Price drops below</option>
+          </select>
+          <input
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder={currentPrice ? currentPrice.toFixed(precision) : "0.00000"}
+            className="flex-1 rounded-lg border border-white/10 bg-surface px-3 py-2 font-mono text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+          />
+        </div>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional note (e.g. breakout level)"
+          className="rounded-lg border border-white/10 bg-surface px-3 py-2 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+        />
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <Button onClick={create} disabled={saving}>
+          {saving ? "Saving…" : "Set Alert"}
+        </Button>
+      </div>
+
+      {alerts.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <div className="text-xs uppercase tracking-wide text-slate-500">Active Alerts</div>
+          {alerts.map((alert) => (
+            <div key={alert.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm">
+              <div>
+                <span className={cn("font-mono font-semibold", alert.condition === "above" ? "text-green-400" : "text-red-400")}>
+                  {alert.condition === "above" ? "↑" : "↓"} {Number(alert.targetPrice).toFixed(precision)}
+                </span>
+                {alert.note && <span className="ml-2 text-xs text-slate-400">{alert.note}</span>}
+              </div>
+              <button
+                onClick={() => remove(alert.id)}
+                className="ml-3 text-xs text-slate-500 hover:text-red-400"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
