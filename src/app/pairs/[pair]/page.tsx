@@ -844,124 +844,103 @@ export default function PairPage({ params }: { params: { pair: string } }) {
       </div>
 
       {activeTab === "market" ? (
-        <div className="space-y-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
 
-          {/* ── Full-width chart row ── */}
-          <Card>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Live Chart</div>
-                {marketSnapshot && (
-                  <div className="mt-1 flex items-baseline gap-3">
-                    <span className="text-2xl font-bold font-mono text-white">
-                      {marketSnapshot.price.toFixed(getPricePrecision(pair))}
-                    </span>
-                    {typeof marketSnapshot.change === "number" && (
-                      <span className={cn("text-sm font-semibold", (marketSnapshot.change) >= 0 ? "text-green-400" : "text-red-400")}>
-                        {marketSnapshot.change >= 0 ? "+" : ""}{marketSnapshot.change.toFixed(getPricePrecision(pair))} ({marketSnapshot.percentChange || 0}%)
+          {/* ── Left: chart + structure ── */}
+          <div className="space-y-4">
+            <Card>
+              {/* Price header + timeframe */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Live Chart</div>
+                  {marketSnapshot && (
+                    <div className="mt-1 flex flex-wrap items-baseline gap-2">
+                      <span className="text-2xl font-bold font-mono text-white">
+                        {marketSnapshot.price.toFixed(getPricePrecision(pair))}
                       </span>
-                    )}
-                    <span className="text-xs text-slate-500">
-                      {marketSnapshot.fallback ? "fallback" : "live"} · {new Date(marketSnapshot.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {MARKET_TIMEFRAMES.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setMarketTimeframe(option)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors",
-                      option === marketTimeframe
-                        ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-200"
-                        : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white"
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {marketError ? (
-              <p className="mt-4 text-sm text-red-300">{marketError}</p>
-            ) : marketSnapshot ? (
-              <>
-                {marketSnapshot.bars.length > 0 ? (
-                  <CandlestickChart
-                    pair={pair}
-                    bars={marketSnapshot.bars}
-                    timeframe={marketSnapshot.timeframe}
-                    overlays={chartOverlays}
-                    zones={chartZones}
-                    markers={chartMarkers}
-                    showSessions
-                    showLiquiditySweeps
-                    className="mt-4"
-                  />
-                ) : null}
-
-                <div className="mt-3 grid grid-cols-4 gap-2 border-t border-white/5 pt-3">
-                  <AccountLine label="Open" value={marketSnapshot.open.toFixed(getPricePrecision(pair))} />
-                  <AccountLine label="High" value={marketSnapshot.high.toFixed(getPricePrecision(pair))} />
-                  <AccountLine label="Low" value={marketSnapshot.low.toFixed(getPricePrecision(pair))} />
-                  <AccountLine label="Prev Close" value={(marketSnapshot.previousClose ?? marketSnapshot.open).toFixed(getPricePrecision(pair))} />
+                      {typeof marketSnapshot.change === "number" && (
+                        <span className={cn("text-sm font-semibold", marketSnapshot.change >= 0 ? "text-green-400" : "text-red-400")}>
+                          {marketSnapshot.change >= 0 ? "+" : ""}{marketSnapshot.change.toFixed(getPricePrecision(pair))} ({marketSnapshot.percentChange || 0}%)
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-500">
+                        {marketSnapshot.fallback ? "fallback" : "live"} · {new Date(marketSnapshot.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  )}
                 </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {MARKET_TIMEFRAMES.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setMarketTimeframe(option)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors",
+                        option === marketTimeframe
+                          ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-200"
+                          : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white"
+                      )}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                  {marketStructure ? (
+              {marketError ? (
+                <p className="mt-4 text-sm text-red-300">{marketError}</p>
+              ) : marketSnapshot ? (
+                <>
+                  {marketSnapshot.bars.length > 0 ? (
+                    <CandlestickChart
+                      pair={pair}
+                      bars={marketSnapshot.bars}
+                      timeframe={marketSnapshot.timeframe}
+                      overlays={chartOverlays}
+                      zones={chartZones}
+                      markers={chartMarkers}
+                      showSessions
+                      showLiquiditySweeps
+                      className="mt-3"
+                    />
+                  ) : null}
+                  <div className="mt-3 grid grid-cols-4 gap-2 border-t border-white/5 pt-3">
+                    <AccountLine label="Open" value={marketSnapshot.open.toFixed(getPricePrecision(pair))} />
+                    <AccountLine label="High" value={marketSnapshot.high.toFixed(getPricePrecision(pair))} />
+                    <AccountLine label="Low" value={marketSnapshot.low.toFixed(getPricePrecision(pair))} />
+                    <AccountLine label="Prev" value={(marketSnapshot.previousClose ?? marketSnapshot.open).toFixed(getPricePrecision(pair))} />
+                  </div>
+                  {marketStructure && (
                     <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/5 pt-3">
-                      <SummaryPill
-                        label="Structure"
-                        value={marketStructure?.bias || "neutral"}
-                        tone={
-                          marketStructure?.bias === "bullish"
-                            ? "text-green-300"
-                            : marketStructure?.bias === "bearish"
-                              ? "text-red-300"
-                              : "text-slate-200"
-                        }
-                      />
-                      <SummaryPill
-                        label="Latest Break"
-                        value={latestStructureEvent?.kind || "None"}
-                        tone={latestStructureEvent?.kind === "CHOCH" ? "text-purple-300" : "text-cyan-300"}
-                      />
-                      <SummaryPill
-                        label="HTF Bands"
-                        value={marketStructure?.htfSupport && marketStructure?.htfResistance ? "Mapped" : "Developing"}
-                        tone="text-slate-200"
-                      />
+                      <SummaryPill label="Structure" value={marketStructure.bias || "neutral"} tone={marketStructure.bias === "bullish" ? "text-green-300" : marketStructure.bias === "bearish" ? "text-red-300" : "text-slate-200"} />
+                      <SummaryPill label="Latest Break" value={latestStructureEvent?.kind || "None"} tone={latestStructureEvent?.kind === "CHOCH" ? "text-purple-300" : "text-cyan-300"} />
+                      <SummaryPill label="HTF Bands" value={marketStructure.htfSupport && marketStructure.htfResistance ? "Mapped" : "Developing"} tone="text-slate-200" />
                     </div>
-                  ) : null}
-              </>
-            ) : marketLoading ? (
-              <p className="mt-4 text-sm text-gray-500">Loading chart...</p>
-            ) : (
-              <p className="mt-4 text-sm text-gray-500">No market snapshot loaded yet.</p>
-            )}
-          </Card>
-
-          {/* ── Two-column grid: structure details + run analysis ── */}
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_360px]">
-            <div className="space-y-4">
-              {marketStructure && (
-                <Card>
-                  <CardHeader>Structure Read</CardHeader>
-                  <p className="text-sm leading-6 text-gray-300">{marketStructure.summary}</p>
-                  {marketStructure.events.length > 0 ? (
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      {marketStructure.events.map((event) => (
-                        <StructureEventCard key={`${event.kind}-${event.time}`} event={event} />
-                      ))}
-                    </div>
-                  ) : null}
-                </Card>
+                  )}
+                </>
+              ) : marketLoading ? (
+                <p className="mt-4 text-sm text-gray-500">Loading chart...</p>
+              ) : (
+                <p className="mt-4 text-sm text-gray-500">No market snapshot loaded yet.</p>
               )}
-            </div>
+            </Card>
 
+            {marketStructure && marketStructure.events.length > 0 && (
+              <Card>
+                <CardHeader>Structure Events</CardHeader>
+                <p className="mb-3 text-sm leading-6 text-gray-300">{marketStructure.summary}</p>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {marketStructure.events.map((event) => (
+                    <StructureEventCard key={`${event.kind}-${event.time}`} event={event} />
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* ── Right: sticky run analysis + alerts ── */}
+          <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <div className="space-y-4">
             <Card>
               <CardHeader>Run Analysis</CardHeader>
