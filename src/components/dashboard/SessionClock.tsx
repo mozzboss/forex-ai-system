@@ -20,7 +20,7 @@ const SESSIONS: Session[] = [
     end: "09:00",
     color: "text-yellow-400",
     pairs: "USDJPY, AUDUSD, NZDUSD",
-    description: "Low volatility. Avoid major pairs unless news driven.",
+    description: "Active for JPY, AUD, NZD pairs. Avoid EUR/GBP.",
   },
   {
     name: "London",
@@ -95,8 +95,9 @@ export function SessionClock() {
   const activeSessions = SESSIONS.filter((s) => isInSession(s, now));
   const isLondon = activeSessions.some((s) => s.name === "London");
   const isNewYork = activeSessions.some((s) => s.name === "New York");
+  const isAsia = activeSessions.some((s) => s.name === "Asia");
   const isOverlap = isLondon && isNewYork;
-  const isActive = isLondon || isNewYork;
+  const isActive = isLondon || isNewYork || isAsia;
 
   // Find next session to open
   const inactiveSessions = SESSIONS.filter((s) => !isInSession(s, now));
@@ -117,20 +118,32 @@ export function SessionClock() {
       {/* Trading status */}
       <div className={cn(
         "rounded-xl px-4 py-3 border",
-        isActive
+        isOverlap
           ? "border-green-500/30 bg-green-500/10"
-          : "border-yellow-500/30 bg-yellow-500/10"
+          : isLondon || isNewYork
+          ? "border-blue-500/30 bg-blue-500/10"
+          : isAsia
+          ? "border-yellow-500/30 bg-yellow-500/10"
+          : "border-slate-500/20 bg-slate-500/5"
       )}>
         <div className="flex items-center gap-2">
-          <span className={cn("h-2.5 w-2.5 rounded-full animate-pulse", isActive ? "bg-green-400" : "bg-yellow-400")} />
-          <span className={cn("text-sm font-semibold", isActive ? "text-green-300" : "text-yellow-300")}>
+          <span className={cn(
+            "h-2.5 w-2.5 rounded-full animate-pulse",
+            isOverlap ? "bg-green-400" : isLondon || isNewYork ? "bg-blue-400" : isAsia ? "bg-yellow-400" : "bg-slate-600"
+          )} />
+          <span className={cn(
+            "text-sm font-semibold",
+            isOverlap ? "text-green-300" : isLondon || isNewYork ? "text-blue-300" : isAsia ? "text-yellow-300" : "text-slate-500"
+          )}>
             {isOverlap
               ? "London / New York Overlap — Best time to trade"
               : isLondon
               ? "London Session Active — Good conditions"
               : isNewYork
               ? "New York Session Active — Good conditions"
-              : "Outside Active Sessions — Wait"}
+              : isAsia
+              ? "Asia Session Active — JPY, AUD, NZD pairs"
+              : "No Active Session — Wait"}
           </span>
         </div>
         {!isActive && nextSession && (
@@ -145,7 +158,9 @@ export function SessionClock() {
               ? "Highest institutional volume of the day. Best R:R setups occur here."
               : isLondon
               ? "Strong EUR, GBP pairs. Watch for London open breakouts."
-              : "USD pairs most active. High-impact US news drives moves."}
+              : isNewYork
+              ? "USD pairs most active. High-impact US news drives moves."
+              : "Focus on USDJPY, AUDUSD, NZDUSD, AUDJPY. Avoid EUR/GBP pairs."}
           </p>
         )}
       </div>
