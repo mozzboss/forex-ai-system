@@ -169,8 +169,8 @@ function buildAnalysisPrompt(
 STEP 1 — MACRO: What is the fundamental backdrop for ${pairCurrencies}? Rate differentials, central bank bias, inflation trajectory.
 STEP 2 — STRUCTURE: What does price structure say on H4 and D1? Higher highs/lows, key S/R, trend direction.
 STEP 3 — SENTIMENT: Where is retail positioned? Is this a fade opportunity or trend continuation?
-STEP 4 — SESSION & NEWS: Is this an active session (London/NY)? Are there high-impact events within 30 minutes?
-STEP 5 — SETUP: Given the above, is there a valid trade setup? If the market is choppy, ranging without direction, or sessions are inactive — there is NO setup. Set tradeSetup to null.
+STEP 4 — SESSION & NEWS: Is this an active session? London (07:00–16:00 UTC) and New York (12:00–21:00 UTC) are active for all pairs. Asia (00:00–09:00 UTC) is an ACTIVE session specifically for JPY pairs (USDJPY, GBPJPY, EURJPY, AUDJPY, CADJPY, CHFJPY), AUD pairs (AUDUSD, AUDCAD, AUDCHF, AUDNZD, AUDJPY), and NZD pairs (NZDUSD, NZDJPY). Do NOT penalise Asia session for these pairs — treat it the same as London/NY. For EUR, GBP, USD, CHF, CAD pairs during Asia only, treat session as inactive. Are there high-impact events within 30 minutes?
+STEP 5 — SETUP: Given the above, is there a valid trade setup? If the market is choppy, ranging without direction, or the session is inactive FOR THIS SPECIFIC PAIR — there is NO setup. Set tradeSetup to null.
 STEP 6 — ENTRY STATUS: Based on current price action, what is the entry status? Be strict: CONFIRMED only when price has triggered at a key level with clear candle confirmation.
 STEP 7 — SCORE & DECISION: Score the setup honestly (see rubric). Inflate nothing. Score below 7 = DENY. Score 7+ but entry not CONFIRMED = WAIT.
 
@@ -237,7 +237,8 @@ FINAL RULES:
 - currencyStrength: include ONLY the two currencies in ${pair} (${pairCurrencies}), not all 8
 - Price levels must be exact to the correct decimal precision for ${pair}
 - If funded account has used daily trades or hit loss limits, lower the score by 1-2 points and note it
-- TAKE_TRADE requires score >= 7 AND entryStatus CONFIRMED simultaneously. Otherwise WAIT or DENY.`;
+- TAKE_TRADE requires score >= 7 AND entryStatus CONFIRMED simultaneously. Otherwise WAIT or DENY.
+- For JPY, AUD, and NZD pairs during Asia session (00:00–09:00 UTC): do NOT reduce score solely because it is the Asia session. These pairs are at home in Asia.`;
 }
 
 // --- Response Parser ---
