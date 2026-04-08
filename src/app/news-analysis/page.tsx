@@ -71,6 +71,7 @@ export default function NewsAnalysisPage() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [eventsLastUpdated, setEventsLastUpdated] = useState<Date | null>(null);
   const [eventsSource, setEventsSource] = useState<string | null>(null);
+  const [refreshingEvents, setRefreshingEvents] = useState(false);
 
   const templates = [
     {
@@ -112,32 +113,47 @@ export default function NewsAnalysisPage() {
   ];
 
   // Pull the live economic calendar so the tab is ready with one-click signals
-  useEffect(() => {
-    const loadEvents = async () => {
+  const loadEvents = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshingEvents(true);
+    } else {
       setEventsLoading(true);
-      setEventsError(null);
-      try {
-        const res = await authFetch("/api/news?limit=8");
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data?.error || "Failed to load news calendar.");
-        }
-        const parsed = (data.events || []).map((event: NewsEvent) => ({
-          ...event,
-          time: new Date(event.time),
-        }));
-        setNewsEvents(parsed);
-        setEventsLastUpdated(new Date());
-        setEventsSource(data.source || null);
-      } catch (err) {
-        setEventsError(err instanceof Error ? err.message : "Could not load calendar.");
-      } finally {
-        setEventsLoading(false);
+    }
+    setEventsError(null);
+    try {
+      const res = await authFetch("/api/news?limit=8");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load news calendar.");
       }
-    };
+      const parsed = (data.events || []).map((event: NewsEvent) => ({
+        ...event,
+        time: new Date(event.time),
+      }));
+      setNewsEvents(parsed);
+      setEventsLastUpdated(new Date());
+      setEventsSource(data.source || null);
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : "Could not load calendar.");
+    } finally {
+      setEventsLoading(false);
+      setRefreshingEvents(false);
+    }
+  };
 
+  useEffect(() => {
     loadEvents();
   }, [authFetch]);
+
+  // Auto-refresh every 15 minutes when tab is visible
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadEvents(true);
+      }
+    }, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,7 +384,14 @@ export default function NewsAnalysisPage() {
           </Card>
 
           <Card>
-            <CardHeader>Upcoming High-Impact (auto)</CardHeader>
+            <div className="flex items-center justify-between">
+              <CardHeader className="mb-0">Upcoming High-Impact (auto)</CardHeader>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                <Button size="sm" variant="secondary" onClick={() => loadEvents(true)} disabled={eventsLoading || refreshingEvents}>
+                  {refreshingEvents ? "Refreshing..." : "Refresh"}
+                </Button>
+              </div>
+            </div>
             {eventsLoading ? (
               <div className="space-y-3 py-3 text-sm text-slate-500">
                 Loading calendar...
