@@ -6,6 +6,7 @@ import type {
   EndOfDayReview,
   EndOfDayReviewContext,
   JournalEntry as AppJournalEntry,
+  MissedConfirmedZone,
   TelegramConnectionStatus,
   TradingAccount as AppTradingAccount,
   Trade as AppTrade,
@@ -1329,5 +1330,134 @@ export async function getAnalysisHistory(
     }));
   } catch {
     return [];
+  }
+}
+
+const MISSED_ZONE_GRACE_MS = 30 * 60 * 1000;   // 30 min before marking as missed
+const MISSED_ZONE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2h window to take the trade
+
+function parseMissedZoneResult(r: { id: string; pair: string; result: string; createdAt: Date }): MissedConfirmedZone | null {
+  try {
+    const result = JSON.parse(r.result) as {
+      entryStatus?: { status?: string };
+      finalDecision?: { decision?: string; score?: number; reasoning?: string };
+      tradeSetup?: {
+        direction?: string;
+        setupType?: string;
+        entryZone?: { low: number; high: number };
+        stopLoss?: number;
+        takeProfit?: number;
+        confirmation?: string;
+      } | null;
+    };
+
+    if (
+      result?.entryStatus?.status !== "CONFIRMED" ||
+      result?.finalDecision?.decision !== "TAKE_TRADE"
+    ) {
+      return null;
+    }
+
+    return {
+      analysisId: r.id,
+      pair: r.pair,
+      missedAt: r.createdAt,
+      direction: result.tradeSetup?.direction ?? null,
+      setupType: result.tradeSetup?.setupType ?? null,
+      entryZone: result.tradeSetup?.entryZone ?? null,
+      stopLoss: result.tradeSetup?.stopLoss ?? null,
+      takeProfit: result.tradeSetup?.takeProfit ?? null,
+      confirmationReason:
+        result.tradeSetup?.confirmation ||
+        result.finalDecision?.reasoning ||
+        "Confirmed setup — no entry logged.",
+      aiScore: result.finalDecision?.score ?? null,
+      aiReasoning: result.finalDecision?.reasoning ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getMissedConfirmedZones(
+  userId: string,
+  pair?: string | null,
+  limit = 10
+): Promise<MissedConfirmedZone[]> {
+  try {
+    const cutoff = new Date(Date.now() - MISSED_ZONE_GRACE_MS);
+    const where: Record<string, unknown> = { userId, createdAt: { lt: cutoff } };
+    if (pair) where.pair = pair;
+
+    const records: Array<{ id: string; pair: string; result: string; createdAt: Date }> =
+      await prismaAny.analysisLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: { id: true, pair: true, result: true, createdAt: true },
+      });
+
+    const confirmed = records
+      .map(parseMissedZoneResult)
+      .filter((z): z is MissedConfirmedZone => z !== null);
+
+    const missed: MissedConfirmedZone[] = [];
+
+    for (const zone of confirmed) {
+      if (missed.length >= limit) break;
+      const windowEnd = new Date(zone.missedAt.getTime() + MISSED_ZONE_WINDOW_MS);
+      const trade = await prisma.trade.findFirst({
+        where: {
+          userId,
+          pair: zone.pair,
+          createdAt: { gte: zone.missedAt, lte: windowEnd },
+        },
+        select: { id: true },
+      });
+      if (!trade) {
+        missed.push(zone);
+      }
+    }
+
+    return missed;
+  } catch {
+    return [];
+  }
+}
+
+export async function getLastConfirmedAnalysisForPair(
+  userId: string,
+  pair: string
+): Promise<MissedConfirmedZone | null> {
+  try {
+    const cutoff = new Date(Date.now() - MISSED_ZONE_GRACE_MS);
+    const records: Array<{ id: string; pair: string; result: string; createdAt: Date }> =
+      await prismaAny.analysisLog.findMany({
+        where: { userId, pair, createdAt: { lt: cutoff } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, pair: true, result: true, createdAt: true },
+      });
+
+    for (const r of records) {
+      const zone = parseMissedZoneResult(r);
+      if (!zone) continue;
+
+      const windowEnd = new Date(zone.missedAt.getTime() + MISSED_ZONE_WINDOW_MS);
+      const trade = await prisma.trade.findFirst({
+        where: {
+          userId,
+          pair,
+          createdAt: { gte: zone.missedAt, lte: windowEnd },
+        },
+        select: { id: true },
+      });
+
+      if (!trade) return zone;
+    }
+
+    return null;
+  } catch {
+    return null;
   }
 }

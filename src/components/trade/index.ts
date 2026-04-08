@@ -6,3 +6,4 @@ export { PerformanceDrilldown } from "./PerformanceDrilldown";
 export { TradeHistoryCharts } from "./TradeHistoryCharts";
 export { TradeManager } from "./TradeManager";
 export { EndOfDayReviewCard } from "./EndOfDayReviewCard";
+export { MissedZonesPanel } from "./MissedZonesPanel";

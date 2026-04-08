@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 
 import { JournalEntryCard } from "@/components/journal";
+import { MissedZonesPanel } from "@/components/trade";
 import { Button, Card, CardHeader } from "@/components/ui";
 import { useJournal, useTrades } from "@/hooks";
 import { formatCurrency } from "@/lib/utils";
@@ -162,6 +163,8 @@ export default function JournalPage() {
           </div>
         </div>
       ) : null}
+
+      <MissedZonesPanel />
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>

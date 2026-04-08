@@ -84,6 +84,16 @@ function formatUTCTime(date: Date): string {
   });
 }
 
+function formatNYTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "America/New_York",
+  });
+}
+
 export function SessionClock() {
   const [now, setNow] = useState(() => new Date());
 
@@ -110,8 +120,20 @@ export function SessionClock() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Session Clock</div>
-        <div className="font-mono text-sm font-semibold text-slate-300">
-          {formatUTCTime(now)} <span className="text-slate-500 text-xs">UTC</span>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="font-mono text-sm font-semibold text-slate-300">
+              {formatNYTime(now)}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.15em] text-slate-600">New York</div>
+          </div>
+          <div className="h-6 w-px bg-white/10" />
+          <div className="text-right">
+            <div className="font-mono text-sm font-semibold text-slate-300">
+              {formatUTCTime(now)}
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.15em] text-slate-600">UTC</div>
+          </div>
         </div>
       </div>
 

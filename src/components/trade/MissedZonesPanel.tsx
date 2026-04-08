@@ -1,0 +1,122 @@
+"use client";
+
+import Link from "next/link";
+
+import { Card, CardHeader } from "@/components/ui";
+import { useMissedZones } from "@/hooks/useMissedZones";
+
+function formatPrice(value: number) {
+  return value.toFixed(value >= 10 ? 3 : 5);
+}
+
+function formatRelativeTime(date: Date): string {
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+interface MissedZonesPanelProps {
+  pair?: string;
+  limit?: number;
+}
+
+export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
+  const { zones, loading } = useMissedZones(pair, limit);
+
+  if (loading) return null;
+  if (zones.length === 0) return null;
+
+  return (
+    <Card className="border-amber-500/20 bg-amber-500/5">
+      <CardHeader>Missed Confirmed Zones</CardHeader>
+      <p className="mb-4 text-sm text-slate-400">
+        These setups reached CONFIRMED status but no trade was logged within the 2-hour window.
+        Review whether conditions have changed before deciding to act.
+      </p>
+
+      <div className="space-y-3">
+        {zones.map((zone) => (
+          <div
+            key={zone.analysisId}
+            className="rounded-xl border border-amber-500/15 bg-surface p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/pairs/${zone.pair}`}
+                  className="text-sm font-bold text-white hover:text-amber-300"
+                >
+                  {zone.pair}
+                </Link>
+                {zone.direction ? (
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                      zone.direction === "LONG"
+                        ? "bg-green-500/15 text-green-400"
+                        : "bg-red-500/15 text-red-400"
+                    }`}
+                  >
+                    {zone.direction}
+                  </span>
+                ) : null}
+                {zone.setupType ? (
+                  <span className="rounded px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-slate-400 bg-slate-800">
+                    {zone.setupType.replace(/_/g, " ")}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {zone.aiScore ? (
+                  <span className="text-xs text-slate-500">{zone.aiScore}/10</span>
+                ) : null}
+                <span className="text-xs text-amber-500/70">{formatRelativeTime(zone.missedAt)}</span>
+              </div>
+            </div>
+
+            {zone.entryZone ? (
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
+                <span>
+                  Zone{" "}
+                  <span className="font-medium text-white">
+                    {formatPrice(zone.entryZone.low)} – {formatPrice(zone.entryZone.high)}
+                  </span>
+                </span>
+                {zone.stopLoss ? (
+                  <span>
+                    SL <span className="font-medium text-red-400">{formatPrice(zone.stopLoss)}</span>
+                  </span>
+                ) : null}
+                {zone.takeProfit ? (
+                  <span>
+                    TP <span className="font-medium text-green-400">{formatPrice(zone.takeProfit)}</span>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <p className="mt-2 text-xs leading-5 text-slate-400 line-clamp-2">
+              {zone.confirmationReason}
+            </p>
+
+            <div className="mt-3">
+              <Link
+                href={`/pairs/${zone.pair}`}
+                className="text-xs font-medium text-amber-400 hover:text-amber-300"
+              >
+                Re-run analysis
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 text-[11px] text-slate-600">
+        Missed zones are logged when CONFIRMED analysis had no trade within 2 hours. Past 30 min grace period only.
+      </p>
+    </Card>
+  );
+}

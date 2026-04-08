@@ -5,8 +5,8 @@ import { formatNewsContextForAnalysis, fetchEconomicCalendar, getPairCurrencies 
 import { fetchMarketSnapshot, formatMarketContextForAnalysis } from "@/lib/market/prices";
 import { shouldAllowTrade } from "@/lib/market/denial";
 import { AuthenticationError, requireAppUserId } from "@/lib/server/auth";
-import { getAnalysisHistory, getTelegramAlertTarget, saveAnalysisLog } from "@/lib/server/persistence";
-import { formatDecisionSignalAlert, sendTelegramMessage } from "@/lib/telegram/service";
+import { getAnalysisHistory, getLastConfirmedAnalysisForPair, getTelegramAlertTarget, saveAnalysisLog } from "@/lib/server/persistence";
+import { formatDecisionSignalAlert, formatMissedZoneAlert, formatReadyAlert, sendTelegramMessage } from "@/lib/telegram/service";
 import { CurrencyPair, TradingAccount } from "@/types";
 import { analysisRequestSchema } from "@/lib/validation/api";
 
@@ -16,7 +16,9 @@ export const runtime = "nodejs";
 // Server-side per-user+pair cooldown — prevents burning API credits on rapid re-runs.
 // Stored in process memory; clears on restart (intentional — restarts are rare, sessions are not).
 const ANALYSIS_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes
+const READY_ALERT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes — prevents spam on slow-forming setups
 const analysisCooldowns = new Map<string, number>();
+const readyAlertCooldowns = new Map<string, number>();
 
 function checkAnalysisCooldown(userId: string, pair: string): { blocked: boolean; retryAfterSecs: number } {
   const key = `${userId}:${pair}`;
@@ -203,14 +205,47 @@ export async function POST(req: NextRequest) {
       denialResults[account.id] = shouldAllowTrade(analysis, account);
     }
 
-    if (shouldSendDecisionAlert(decisionSignal.mode)) {
+    // Fetch Telegram target once — reused for all alerts below
+    let telegramChatId: string | null = null;
+    try {
+      telegramChatId = await getTelegramAlertTarget(userId);
+    } catch {
+      // Non-critical — alerts are best-effort
+    }
+
+    if (telegramChatId) {
+      // Check if there was a missed confirmed zone from the previous analysis run
       try {
-        const chatId = await getTelegramAlertTarget(userId);
-        if (chatId) {
-          await sendTelegramMessage(chatId, formatDecisionSignalAlert(pair, decisionSignal));
+        const missedZone = await getLastConfirmedAnalysisForPair(userId, pair);
+        if (missedZone) {
+          void sendTelegramMessage(telegramChatId, formatMissedZoneAlert(pair, missedZone));
         }
-      } catch (telegramError) {
-        console.error("Analysis decision alert failed:", telegramError);
+      } catch (missedZoneError) {
+        console.error("Missed zone check failed:", missedZoneError);
+      }
+
+      if (shouldSendDecisionAlert(decisionSignal.mode)) {
+        try {
+          await sendTelegramMessage(telegramChatId, formatDecisionSignalAlert(pair, decisionSignal));
+        } catch (telegramError) {
+          console.error("Analysis decision alert failed:", telegramError);
+        }
+      }
+
+      if (analysis.entryStatus.status === "READY") {
+        const readyKey = `${userId}:${pair}`;
+        const lastReady = readyAlertCooldowns.get(readyKey) ?? 0;
+        if (Date.now() - lastReady >= READY_ALERT_COOLDOWN_MS) {
+          try {
+            await sendTelegramMessage(
+              telegramChatId,
+              formatReadyAlert(pair, decisionSignal, analysis.entryStatus.whatMustHappenNext)
+            );
+            readyAlertCooldowns.set(readyKey, Date.now());
+          } catch (readyAlertError) {
+            console.error("Ready alert failed:", readyAlertError);
+          }
+        }
       }
     }
 

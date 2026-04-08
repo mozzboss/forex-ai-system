@@ -355,3 +355,64 @@ export function formatRiskAlert(accountName: string, reason: string) {
 
   return sections.filter(Boolean).join("\n\n");
 }
+
+export function formatReadyAlert(
+  pair: string,
+  signal: PairDecisionSignal,
+  whatMustHappenNext: string
+): string {
+  const sections = [
+    buildTelegramHeader(pair, "GET READY"),
+    buildTelegramSection("Setup is forming", extractTelegramPoints(signal.reason, 2, 120)),
+    buildTelegramSection(
+      "What must happen next",
+      [truncateTelegramText(whatMustHappenNext, 140)]
+    ),
+    buildTelegramSection("Do now", [
+      "Prepare your levels. Entry is NOT valid yet — wait for CONFIRMED before executing.",
+    ]),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
+}
+
+export function formatMissedZoneAlert(
+  pair: string,
+  zone: {
+    direction: string | null;
+    setupType: string | null;
+    entryZone: { low: number; high: number } | null;
+    stopLoss: number | null;
+    takeProfit: number | null;
+    confirmationReason: string;
+    aiScore: number | null;
+    missedAt: Date;
+  }
+): string {
+  const zoneStr = zone.entryZone
+    ? `${formatPrice(zone.entryZone.low)} - ${formatPrice(zone.entryZone.high)}`
+    : "See analysis";
+
+  const metrics: Array<[string, string]> = [["Zone", zoneStr]];
+  if (zone.stopLoss) metrics.push(["SL", formatPrice(zone.stopLoss)]);
+  if (zone.takeProfit) metrics.push(["TP", formatPrice(zone.takeProfit)]);
+  if (zone.aiScore) metrics.push(["Score", `${zone.aiScore}/10`]);
+
+  const directionStr = [zone.direction, zone.setupType].filter(Boolean).join(" ").toUpperCase();
+
+  const sections = [
+    buildTelegramHeader(pair, "MISSED CONFIRMED ZONE"),
+    directionStr ? buildTelegramHeader(directionStr) : null,
+    "",
+    buildMetricRow(metrics),
+    buildTelegramSection(
+      "What was confirmed",
+      extractTelegramPoints(zone.confirmationReason, 2, 120)
+    ),
+    buildTelegramSection("Do now", [
+      "Review the chart. If conditions are still valid, re-run analysis. If not, log as a missed opportunity.",
+    ]),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
+}

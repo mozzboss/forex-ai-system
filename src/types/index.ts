@@ -365,3 +365,19 @@ export interface TelegramConnectionStatus {
 export interface TrackedPairsPreference {
   trackedPairs: CurrencyPair[];
 }
+
+// --- Missed Confirmed Zones ---
+
+export interface MissedConfirmedZone {
+  analysisId: string;
+  pair: string;
+  missedAt: Date;
+  direction: string | null;
+  setupType: string | null;
+  entryZone: { low: number; high: number } | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  confirmationReason: string;
+  aiScore: number | null;
+  aiReasoning: string | null;
+}
