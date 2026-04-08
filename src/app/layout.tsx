@@ -1,12 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { AppShell, AuthProvider } from "@/components/shared";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Forex MB - Disciplined Trading System",
+  title: {
+    default: "Forex MB",
+    template: "%s | Forex MB",
+  },
   description: "AI-powered trading assistant for disciplined Forex trading",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

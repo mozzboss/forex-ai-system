@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button, Card, CardHeader, EntryStatusCard, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS } from "@/config/trading";
 import { useAuth } from "@/hooks";
 import { cn, getBiasColor, formatCurrency } from "@/lib/utils";
-import type { CurrencyPair, NewsAnalysisResult } from "@/types";
+import type { CurrencyPair, NewsAnalysisResult, NewsEvent } from "@/types";
 
 function formatPrice(value: number) {
   return value.toFixed(value >= 10 ? 3 : 5);
@@ -66,6 +66,74 @@ export default function NewsAnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NewsAnalysisResult | null>(null);
+  const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  const templates = [
+    {
+      label: "US–Iran ceasefire risk-on flip",
+      headline: "Oil dumps under $100 after US–Iran agree two-week ceasefire; Strait of Hormuz reopening watched",
+      summary:
+        "Brent -12% on ceasefire headlines; path depends on compliance and shipping resuming. Inflation shock eases but risk premium still elevated. Watch USD safe-haven unwind vs JPY and gold if calm holds.",
+    },
+    {
+      label: "USD/JPY intervention watch",
+      headline: "USD/JPY grinds toward 160; MoF jawboning raises intervention odds",
+      summary:
+        "Yield spread still favors USD, but Japan likely to defend 160/161. Expect whipsaws around Tokyo fix; headline risk high on any MoF/BoJ wires.",
+      pair: "USDJPY",
+      currentPrice: "159.80",
+    },
+    {
+      label: "EUR/USD breakout map",
+      headline: "EUR/USD coiling between 1.1460 support and 1.1630 resistance ahead of US CPI",
+      summary:
+        "Bias slightly bearish; upside needs clean risk-on + soft CPI. Downside resumes if oil re-flare or CPI beats. Beware stop runs in range.",
+      pair: "EURUSD",
+      currentPrice: "1.1545",
+    },
+    {
+      label: "GBP softness",
+      headline: "GBP weak near 4‑month lows vs USD; energy shock and soft growth weigh",
+      summary:
+        "UK inflation still sticky; higher energy keeps real incomes tight. Cable vulnerable on USD strength and risk-off; watch 1.2300/1.2380 supports.",
+      pair: "GBPUSD",
+      currentPrice: "1.2430",
+    },
+    {
+      label: "Event stack: CPI + FOMC minutes",
+      headline: "US CPI Friday 8:30 ET expected hot on oil; FOMC minutes today 14:00 ET",
+      summary:
+        "Energy-led CPI pop risks re-pricing cuts. Minutes could show split on inflation path. Fade size into releases; expect USD and yields to lead.",
+    },
+  ];
+
+  // Pull the live economic calendar so the tab is ready with one-click signals
+  useEffect(() => {
+    const loadEvents = async () => {
+      setEventsLoading(true);
+      setEventsError(null);
+      try {
+        const res = await authFetch("/api/news?limit=8");
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || "Failed to load news calendar.");
+        }
+        const parsed = (data.events || []).map((event: NewsEvent) => ({
+          ...event,
+          time: new Date(event.time),
+        }));
+        setNewsEvents(parsed);
+      } catch (err) {
+        setEventsError(err instanceof Error ? err.message : "Could not load calendar.");
+      } finally {
+        setEventsLoading(false);
+      }
+    };
+
+    loadEvents();
+  }, [authFetch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,6 +167,46 @@ export default function NewsAnalysisPage() {
     }
   };
 
+  const prefillFromEvent = (event: NewsEvent) => {
+    const localTime = formatEventTime(event.time);
+    const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) — ${localTime}`;
+    const summaryText = [
+      `Impact: ${event.impact.toUpperCase()}`,
+      event.forecast ? `Forecast: ${event.forecast}` : null,
+      event.previous ? `Previous: ${event.previous}` : null,
+      `Arrives in ${timeUntil(event.time)}.`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    setHeadline(headlineText);
+    setSummary(summaryText);
+    setResult(null);
+  };
+
+  const applyTemplate = (template: (typeof templates)[number]) => {
+    setHeadline(template.headline);
+    setSummary(template.summary);
+    setPair((template.pair || "") as CurrencyPair | "");
+    setCurrentPrice(template.currentPrice || "");
+    setResult(null);
+  };
+
+  const pinnedBrief = {
+    title: "Today’s Market Brief (auto)",
+    bullets: [
+      "Middle East tension (US–Iran) keeps oil elevated → feeds inflation and risk-off moves.",
+      "USD bias: strengthens on fear, softens when risk steadies; momentum is choppy intraday.",
+      "USD/JPY parked near 160 — high intervention risk from Japan; expect headline whipsaws.",
+      "EUR/USD coiling 1.1460 support / 1.1630 resistance; direction likely follows oil + US CPI tone.",
+      "GBP weak vs USD on energy + inflation drag; slight bearish bias near 4‑month lows.",
+      "EM FX (MXN, BRL, etc.) benefited from brief USD softness, but April outlook is shaky if oil re-flares.",
+      "High-impact this week: US CPI (Fri 8:30 ET), FOMC Minutes (today 14:00 ET), weekly oil inventories.",
+      "Execution tip: wait for news spike → let spread/vol crush → enter on structure; avoid chasing.",
+      "Best liquidity windows: London 3–6 AM ET; New York open 8:30–10 AM ET for news-driven moves.",
+    ],
+  };
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       {/* Hero */}
@@ -115,6 +223,19 @@ export default function NewsAnalysisPage() {
           A news headline alone is never CONFIRMED. Always verify on the chart.
         </p>
       </section>
+
+      {/* Pinned daily brief */}
+      <Card>
+        <CardHeader>{pinnedBrief.title}</CardHeader>
+        <ul className="space-y-2 text-sm leading-6 text-slate-300">
+          {pinnedBrief.bullets.map((item) => (
+            <li key={item} className="flex items-start gap-2">
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-brand-400" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1.6fr]">
         {/* Form */}
@@ -205,6 +326,72 @@ export default function NewsAnalysisPage() {
                 {loading ? "Analyzing..." : "Analyze News"}
               </Button>
             </form>
+          </Card>
+
+          <Card>
+            <CardHeader>Signal Shortcuts</CardHeader>
+            <div className="grid gap-3">
+              {templates.map((template) => (
+                <div
+                  key={template.label}
+                  className="rounded-xl border border-white/5 bg-slate-950/30 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-white">{template.label}</div>
+                      <p className="text-xs text-slate-500">
+                        {template.pair ? `${template.pair} · ` : ""}{template.summary.slice(0, 96)}{template.summary.length > 96 ? "…" : ""}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => applyTemplate(template)}>
+                      Use
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader>Upcoming High-Impact (auto)</CardHeader>
+            {eventsLoading ? (
+              <div className="space-y-3 py-3 text-sm text-slate-500">
+                Loading calendar...
+              </div>
+            ) : eventsError ? (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {eventsError}
+              </div>
+            ) : newsEvents.length === 0 ? (
+              <div className="text-sm text-slate-500">No upcoming events loaded.</div>
+            ) : (
+              <div className="space-y-3">
+                {newsEvents.map((event) => (
+                  <div
+                    key={`${event.time.toISOString()}-${event.event}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-slate-950/30 px-4 py-3"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="text-sm font-semibold text-white truncate">
+                        {event.currency} · {event.event}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {formatEventTime(event.time)} · {timeUntil(event.time)} · {event.impact.toUpperCase()}
+                      </div>
+                      {(event.forecast || event.previous) && (
+                        <div className="text-[11px] text-slate-600">
+                          {event.forecast ? `Forecast ${event.forecast}` : "Forecast n/a"} ·{" "}
+                          {event.previous ? `Prev ${event.previous}` : "Prev n/a"}
+                        </div>
+                      )}
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => prefillFromEvent(event)}>
+                      Analyze
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {result ? (
@@ -403,4 +590,18 @@ function InsightBlock({ label, value }: { label: string; value: string }) {
       <p className="text-sm leading-5 text-slate-300">{value}</p>
     </div>
   );
+}
+
+function formatEventTime(date: Date) {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function timeUntil(date: Date) {
+  const diffMs = date.getTime() - Date.now();
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes <= 0) return "now";
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  return `${hours}h ${minutes}m`;
 }
