@@ -532,7 +532,7 @@ export default function DashboardPage() {
       {/* ── ROW 1: Header bar ── */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex AI System</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex MB</div>
           <h1 className="mt-1 text-xl font-bold tracking-tight text-white sm:text-2xl">Trading Dashboard</h1>
         </div>
         <div className="flex flex-wrap gap-2">

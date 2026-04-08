@@ -5,7 +5,7 @@ import { AppShell, AuthProvider } from "@/components/shared";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Forex AI - Disciplined Trading System",
+  title: "Forex MB - Disciplined Trading System",
   description: "AI-powered trading assistant for disciplined Forex trading",
 };
 

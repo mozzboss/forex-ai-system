@@ -145,7 +145,7 @@ function formatRulesMessage() {
 
 function formatHelpMessage() {
   return [
-    "Forex AI — available commands",
+    "Forex MB — available commands",
     "",
     "/pair EURUSD — quick bias check and score for a pair",
     "/risk BALANCE RISK% ENTRY SL TP PAIR DIR — position size calculator",
@@ -324,7 +324,7 @@ async function replyWithStartMessage(ctx: Context, linked = false) {
     linked
       ? "Telegram is linked. Send /help to see all available commands."
       : [
-          "Forex AI Trading Assistant",
+          "Forex MB Trading Assistant",
           "This is a discipline companion, not a signal bot.",
           "To connect this chat, generate a Telegram code in Settings and send /start CODE here.",
           "Once linked, send /help to see all available commands.",

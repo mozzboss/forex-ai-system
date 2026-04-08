@@ -40,7 +40,7 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white">
-              <span className="text-brand-500">Forex</span> AI
+              <span className="text-brand-500">Forex</span> MB
             </h1>
             <p className="mt-0.5 text-xs text-gray-500">Discipline | Risk | Clarity</p>
           </div>
@@ -48,6 +48,7 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
             <button
               type="button"
               onClick={onClose}
+              aria-label="Close navigation"
               className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
             >
               Close
@@ -87,6 +88,7 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  aria-hidden="true"
                 >
                   <path d={icon} />
                 </svg>

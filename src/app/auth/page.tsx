@@ -62,7 +62,7 @@ export default function AuthPage() {
         <div className="flex flex-col justify-between rounded-[2rem] border border-white/10 bg-slate-950/35 p-8">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-300/80">
-              Forex AI
+              Forex MB
             </div>
             <h1 className="mt-4 max-w-xl text-4xl font-bold tracking-tight text-white">
               Discipline first. Execution second. Capital protection always.

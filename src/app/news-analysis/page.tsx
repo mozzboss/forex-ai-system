@@ -174,6 +174,7 @@ export default function NewsAnalysisPage() {
                     placeholder="e.g. 1.0850"
                     type="number"
                     step="any"
+                    min="0"
                     className="w-full rounded-xl border border-white/10 bg-surface px-3 py-2.5 text-sm font-mono text-gray-300 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
                   />
                 </div>
