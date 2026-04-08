@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { ALL_PAIRS } from "@/config/trading";
 import { cn, getBiasColor } from "@/lib/utils";
-import { Bias, CurrencyPair } from "@/types";
+import { Bias, CurrencyPair, EntryStatus } from "@/types";
 
 interface HeatmapEntry {
   pair: CurrencyPair;
@@ -16,9 +16,10 @@ interface HeatmapEntry {
 interface SetupHeatmapProps {
   data: HeatmapEntry[];
   confirmedPairs?: Set<string>;
+  signals?: Partial<Record<CurrencyPair, { entryStatus: EntryStatus }>>;
 }
 
-export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
+export function SetupHeatmap({ data, confirmedPairs, signals }: SetupHeatmapProps) {
   const sorted = [...data].sort((a, b) => b.score - a.score);
 
   if (sorted.length === 0) {
@@ -34,6 +35,7 @@ export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
       {sorted.map(({ pair, score, bias, muted }) => {
         const intensity = score / 10;
         const isConfirmed = confirmedPairs?.has(pair) ?? false;
+        const signal = signals?.[pair];
         const bgColor =
           bias === "bullish"
             ? `rgba(34, 197, 94, ${intensity * 0.3})`
@@ -66,6 +68,9 @@ export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
             <div className="text-[10px] font-mono text-gray-400">{pair}</div>
             <div className={cn("mt-0.5 text-xs font-bold", getBiasColor(bias))}>
               {score}/10
+            </div>
+            <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-300/90">
+              {signal?.entryStatus || (muted ? "NEWS" : "WATCH")}
             </div>
           </Link>
         );

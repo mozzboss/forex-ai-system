@@ -1,12 +1,12 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, Card, CardHeader, EntryStatusCard, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS } from "@/config/trading";
 import { useAuth } from "@/hooks";
 import { cn, getBiasColor } from "@/lib/utils";
-import type { CurrencyPair, NewsAnalysisResult, NewsEvent } from "@/types";
+import type { Currency, CurrencyPair, NewsAnalysisResult, NewsEvent } from "@/types";
 
 function formatPrice(value: number) {
   return value.toFixed(value >= 10 ? 3 : 5);
@@ -100,6 +100,104 @@ const ANALYSIS_STEPS = [
   "Building trade signal...",
 ];
 
+interface AutoMarketBrief {
+  tone: "high" | "medium" | "low";
+  headline: string;
+  bullets: string[];
+  watchPairs: CurrencyPair[];
+}
+
+function impactWeight(impact: NewsEvent["impact"]) {
+  if (impact === "high") return 3;
+  if (impact === "medium") return 2;
+  return 1;
+}
+
+function pairIncludesCurrency(pair: CurrencyPair, currency: Currency) {
+  if (pair === "XAUUSD") {
+    return currency === "USD";
+  }
+
+  return pair.slice(0, 3) === currency || pair.slice(3, 6) === currency;
+}
+
+function buildAutoMarketBrief(events: NewsEvent[]): AutoMarketBrief {
+  const now = Date.now();
+  const upcoming = events
+    .filter((event) => event.time.getTime() >= now)
+    .sort((left, right) => left.time.getTime() - right.time.getTime());
+
+  if (upcoming.length === 0) {
+    return {
+      tone: "low",
+      headline: "No major calendar shock in the current window",
+      bullets: [
+        "No upcoming medium/high events are currently returned by the connected providers.",
+        "Use this quiet window to prep levels, tighten watchlists, and avoid forcing entries.",
+        "Keep headline risk in mind even when the economic calendar is light.",
+      ],
+      watchPairs: [],
+    };
+  }
+
+  const highEvents = upcoming.filter((event) => event.impact === "high");
+  const mediumEvents = upcoming.filter((event) => event.impact === "medium");
+  const nextEvent = upcoming[0];
+  const nextHigh = highEvents[0];
+
+  const currencyScores = new Map<Currency, { score: number; high: number; medium: number }>();
+  for (const event of upcoming.slice(0, 12)) {
+    const entry = currencyScores.get(event.currency) || { score: 0, high: 0, medium: 0 };
+    entry.score += impactWeight(event.impact);
+    if (event.impact === "high") entry.high += 1;
+    if (event.impact === "medium") entry.medium += 1;
+    currencyScores.set(event.currency, entry);
+  }
+
+  const rankedCurrencies = [...currencyScores.entries()]
+    .sort((left, right) => right[1].score - left[1].score)
+    .map(([currency]) => currency);
+
+  const primaryCurrency = rankedCurrencies[0];
+  const watchPairs = ALL_PAIRS
+    .filter((pair) => rankedCurrencies.slice(0, 2).some((currency) => pairIncludesCurrency(pair, currency)))
+    .slice(0, 4);
+
+  const nextHighMinutes = nextHigh
+    ? Math.max(0, Math.round((nextHigh.time.getTime() - now) / 60000))
+    : null;
+  const tone: AutoMarketBrief["tone"] =
+    highEvents.length >= 3 || (nextHighMinutes !== null && nextHighMinutes <= 90)
+      ? "high"
+      : highEvents.length > 0 || mediumEvents.length >= 3
+        ? "medium"
+        : "low";
+
+  const headline =
+    tone === "high"
+      ? "Event-driven tape: protect entries around release windows"
+      : tone === "medium"
+        ? "Moderate calendar pressure: clean setups still possible"
+        : "Lighter calendar: structure can lead if discipline stays high";
+
+  const bullets = [
+    primaryCurrency
+      ? `${primaryCurrency} currently carries the heaviest scheduled event load in the next window.`
+      : "No single currency dominates the current event map.",
+    nextHigh
+      ? `${nextHigh.currency} ${nextHigh.event} is the next high-impact release (${timeUntil(nextHigh.time)}).`
+      : `${nextEvent.currency} ${nextEvent.event} is next (${timeUntil(nextEvent.time)}), but no high-impact release is queued yet.`,
+    watchPairs.length > 0
+      ? `Focus watchlist: ${watchPairs.join(", ")}.`
+      : "Keep watchlist tight and prioritize pairs with clean structure.",
+    tone === "high"
+      ? "Execution plan: wait for the spike, then trade only confirmed follow-through."
+      : "Execution plan: no chasing candles, only take entries that remain confirmed after news checks.",
+  ];
+
+  return { tone, headline, bullets, watchPairs };
+}
+
 export default function NewsAnalysisPage() {
   const { authFetch } = useAuth();
   const [headline, setHeadline] = useState("");
@@ -154,6 +252,8 @@ export default function NewsAnalysisPage() {
     return () => clearInterval(interval);
   }, [loadEvents]);
 
+  const autoBrief = useMemo(() => buildAutoMarketBrief(newsEvents), [newsEvents]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!headline.trim()) return;
@@ -199,13 +299,13 @@ export default function NewsAnalysisPage() {
   };
 
   const prefillFromEvent = (event: NewsEvent, enableTelegram = false) => {
-    const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) — ${formatEventTime(event.time)}`;
+    const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) â€” ${formatEventTime(event.time)}`;
     const summaryText = [
       `Impact: ${event.impact.toUpperCase()}`,
       event.forecast ? `Forecast: ${event.forecast}` : null,
       event.previous ? `Previous: ${event.previous}` : null,
       `Arrives in ${timeUntil(event.time)}.`,
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean).join(" Â· ");
     setHeadline(headlineText);
     setSummary(summaryText);
     setSendTelegram(enableTelegram || sendTelegram);
@@ -224,8 +324,9 @@ export default function NewsAnalysisPage() {
           Paste a headline. Get a structured trading signal.
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-          Converts breaking news into bias, entry status, and trade idea — using the same
+          Converts breaking news into bias, entry status, and trade idea â€” using the same
           WAIT / READY / CONFIRMED / INVALID framework as the pair analysis engine.
+          The auto brief below refreshes from live calendar events, so you can check conditions without typing first.
           A news headline alone is never CONFIRMED. Always verify on the chart.
         </p>
       </section>
@@ -233,6 +334,56 @@ export default function NewsAnalysisPage() {
       <div className="grid gap-6 xl:grid-cols-[1fr_1.6fr]">
         {/* Left: form + upcoming events */}
         <div className="space-y-4">
+          <Card className={cn(
+            autoBrief.tone === "high"
+              ? "border-red-500/25 bg-red-500/[0.05]"
+              : autoBrief.tone === "medium"
+                ? "border-amber-500/25 bg-amber-500/[0.04]"
+                : "border-emerald-500/25 bg-emerald-500/[0.04]"
+          )}>
+            <div className="flex items-start justify-between gap-3">
+              <CardHeader className="mb-0">Today&apos;s Market Brief (auto)</CardHeader>
+              <div className="text-right text-[11px] text-slate-500">
+                <div>{eventsSource ? `Source: ${eventsSource}` : "Source: unavailable"}</div>
+                <div>{eventsLastUpdated ? `Updated ${eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Waiting for feed"}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Regime</div>
+                <div className={cn(
+                  "mt-1.5 text-sm font-semibold",
+                  autoBrief.tone === "high"
+                    ? "text-red-300"
+                    : autoBrief.tone === "medium"
+                      ? "text-amber-200"
+                      : "text-emerald-300"
+                )}>
+                  {autoBrief.headline}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {autoBrief.bullets.map((bullet) => (
+                  <div key={bullet} className="rounded-xl border border-white/5 bg-slate-950/25 px-3 py-2.5 text-sm text-slate-300">
+                    {bullet}
+                  </div>
+                ))}
+              </div>
+
+              {autoBrief.watchPairs.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {autoBrief.watchPairs.map((pairItem) => (
+                    <span key={pairItem} className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                      {pairItem}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
           <Card>
             <div className="flex items-center justify-between mb-1">
               <CardHeader className="mb-0">News Input</CardHeader>
@@ -262,7 +413,7 @@ export default function NewsAnalysisPage() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1.5">
-                  Summary <span className="text-slate-600">(optional — improves accuracy)</span>
+                  Summary <span className="text-slate-600">(optional â€” improves accuracy)</span>
                 </label>
                 <textarea
                   value={summary}
@@ -362,15 +513,15 @@ export default function NewsAnalysisPage() {
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-semibold text-white truncate">
-                              {event.currency} · {event.event}
+                              {event.currency} Â· {event.event}
                             </span>
                             <ImpactChip impact={event.impact} />
                           </div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {formatEventTime(event.time)} · in {timeUntil(event.time)}
+                            {formatEventTime(event.time)} Â· in {timeUntil(event.time)}
                             {(event.forecast || event.previous) && (
                               <span className="text-slate-600">
-                                {" "}· {event.forecast ? `F: ${event.forecast}` : "F: n/a"} · {event.previous ? `P: ${event.previous}` : "P: n/a"}
+                                {" "}Â· {event.forecast ? `F: ${event.forecast}` : "F: n/a"} Â· {event.previous ? `P: ${event.previous}` : "P: n/a"}
                               </span>
                             )}
                           </div>
@@ -388,7 +539,7 @@ export default function NewsAnalysisPage() {
                   ))}
                   {eventsLastUpdated && (
                     <p className="text-[11px] text-slate-600">
-                      {eventsSource ? `${eventsSource} · ` : ""}Updated {eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {eventsSource ? `${eventsSource} Â· ` : ""}Updated {eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </p>
                   )}
                 </div>
@@ -429,7 +580,7 @@ export default function NewsAnalysisPage() {
 
           {result && !loading ? (
             <>
-              {/* Final Decision — first so you see the verdict immediately */}
+              {/* Final Decision â€” first so you see the verdict immediately */}
               <Card className={cn(
                 "border",
                 result.finalDecision.decision === "TAKE_TRADE"
@@ -442,7 +593,7 @@ export default function NewsAnalysisPage() {
                   <CardHeader className="mb-0">Decision</CardHeader>
                   <div className="text-[11px] text-slate-500">
                     {new Date(result.analyzedAt).toLocaleTimeString()}
-                    {result.pair ? ` · ${result.pair}` : ""}
+                    {result.pair ? ` Â· ${result.pair}` : ""}
                   </div>
                 </div>
                 <div className="mt-3 space-y-3">
@@ -522,7 +673,7 @@ export default function NewsAnalysisPage() {
                       <div className="rounded-lg border border-white/5 bg-slate-950/30 px-3 py-2.5">
                         <div className="text-slate-500">Entry Zone</div>
                         <div className="mt-1 font-mono font-medium text-white">
-                          {formatPrice(result.tradeIdea.entryZoneLow)} – {formatPrice(result.tradeIdea.entryZoneHigh)}
+                          {formatPrice(result.tradeIdea.entryZoneLow)} â€“ {formatPrice(result.tradeIdea.entryZoneHigh)}
                         </div>
                       </div>
                       <div className="rounded-lg border border-white/5 bg-slate-950/30 px-3 py-2.5">
@@ -541,7 +692,7 @@ export default function NewsAnalysisPage() {
                 </Card>
               ) : result.entryStatus !== "INVALID" ? (
                 <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-5 text-center text-sm text-slate-500">
-                  No trade levels — add a current price to unlock entry zone, SL, and TP.
+                  No trade levels â€” add a current price to unlock entry zone, SL, and TP.
                 </div>
               ) : null}
 
@@ -566,7 +717,7 @@ export default function NewsAnalysisPage() {
                   <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-slate-950/30 px-4 py-3">
                     <span className="text-xs text-slate-500">Already priced in?</span>
                     <span className={cn("text-xs font-semibold", result.proInsight.pricedIn ? "text-yellow-400" : "text-green-400")}>
-                      {result.proInsight.pricedIn ? "Likely yes — expect fades" : "Probably not — momentum possible"}
+                      {result.proInsight.pricedIn ? "Likely yes â€” expect fades" : "Probably not â€” momentum possible"}
                     </span>
                   </div>
                   <div>

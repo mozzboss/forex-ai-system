@@ -39,6 +39,16 @@ interface HeatmapEntry {
   muted?: boolean;
 }
 
+interface PairAnalysisSignal {
+  pair: CurrencyPair;
+  score: number;
+  bias: Bias;
+  decision: "TAKE_TRADE" | "WAIT" | "DENY";
+  entryStatus: EntryStatus;
+  nextStep: string;
+  updatedAt: Date;
+}
+
 interface ActiveSetupCard {
   pair: CurrencyPair;
   direction: "LONG" | "SHORT";
@@ -65,6 +75,59 @@ interface NewsFeedMeta {
   source: string | null;
   minimumImpact?: "low" | "medium" | "high";
   window?: string;
+}
+
+function parsePairAnalysisSignal(pair: CurrencyPair, payload: unknown): PairAnalysisSignal | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const result = payload as {
+    finalDecision?: { score?: unknown; decision?: unknown };
+    marketOverview?: { bias?: unknown };
+    entryStatus?: {
+      status?: unknown;
+      whatMustHappenNext?: unknown;
+      updatedAt?: unknown;
+    };
+    timestamp?: unknown;
+  };
+
+  const score = typeof result.finalDecision?.score === "number" ? result.finalDecision.score : null;
+  const decision = result.finalDecision?.decision;
+  const bias = result.marketOverview?.bias;
+  const entryStatus = result.entryStatus?.status;
+  const nextStep = result.entryStatus?.whatMustHappenNext;
+  const updatedAtRaw = result.entryStatus?.updatedAt ?? result.timestamp;
+  const updatedAt = updatedAtRaw ? new Date(String(updatedAtRaw)) : null;
+
+  if (!score || !decision || !bias || !entryStatus || !updatedAt || Number.isNaN(updatedAt.getTime())) {
+    return null;
+  }
+
+  if (decision !== "TAKE_TRADE" && decision !== "WAIT" && decision !== "DENY") {
+    return null;
+  }
+
+  if (bias !== "bullish" && bias !== "bearish" && bias !== "neutral") {
+    return null;
+  }
+
+  if (entryStatus !== "WAIT" && entryStatus !== "READY" && entryStatus !== "CONFIRMED" && entryStatus !== "INVALID") {
+    return null;
+  }
+
+  return {
+    pair,
+    score: clamp(Math.round(score), 1, 10),
+    bias,
+    decision,
+    entryStatus,
+    nextStep: typeof nextStep === "string" && nextStep.trim().length > 0
+      ? nextStep.trim()
+      : "Re-run analysis for a fresh trigger checklist.",
+    updatedAt,
+  };
 }
 
 function deserializeTrade(trade: Trade): Trade {
@@ -181,7 +244,19 @@ function deriveCurrencyStrength(trades: Trade[]) {
   ) as Record<Currency, number>;
 }
 
-function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[], trackedPairs: CurrencyPair[]) {
+function buildHeatmap({
+  trades,
+  newsEvents,
+  trackedPairs,
+  pairSignals,
+  marketSnapshots,
+}: {
+  trades: Trade[];
+  newsEvents: NewsEvent[];
+  trackedPairs: CurrencyPair[];
+  pairSignals: Partial<Record<CurrencyPair, PairAnalysisSignal>>;
+  marketSnapshots: DashboardMarketSnapshot[];
+}) {
   const activeTradeByPair = new Map<CurrencyPair, Trade>();
   for (const trade of trades) {
     const existing = activeTradeByPair.get(trade.pair);
@@ -190,8 +265,22 @@ function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[], trackedPairs: Cu
     }
   }
 
-  return uniquePairs([...trackedPairs, ...Array.from(activeTradeByPair.keys())]).map((pair) => {
+  const snapshotByPair = new Map<CurrencyPair, DashboardMarketSnapshot>(
+    marketSnapshots.map((snapshot) => [snapshot.pair, snapshot])
+  );
+  const signalPairs = Object.keys(pairSignals) as CurrencyPair[];
+
+  return uniquePairs([...trackedPairs, ...Array.from(activeTradeByPair.keys()), ...signalPairs]).map((pair) => {
     const trade = activeTradeByPair.get(pair);
+    const signal = pairSignals[pair];
+    const snapshot = snapshotByPair.get(pair);
+    const pairContext = getCurrenciesFromPair(pair);
+    const pairCurrencies = [pairContext.base, pairContext.quote].filter(Boolean) as Currency[];
+    const nearbyHighImpact = newsEvents.some((event) => {
+      const minutesAway = Math.round((event.time.getTime() - Date.now()) / 60000);
+      return event.impact === "high" && minutesAway >= 0 && minutesAway <= 90 && pairCurrencies.includes(event.currency);
+    });
+
     if (trade) {
       return {
         pair,
@@ -200,11 +289,32 @@ function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[], trackedPairs: Cu
       } satisfies HeatmapEntry;
     }
 
-    const pairCurrencies = [pair.slice(0, 3), pair.slice(3, 6)];
-    const nearbyHighImpact = newsEvents.some((event) => {
-      const minutesAway = Math.round((event.time.getTime() - Date.now()) / 60000);
-      return event.impact === "high" && minutesAway >= 0 && minutesAway <= 90 && pairCurrencies.includes(event.currency);
-    });
+    if (signal) {
+      return {
+        pair,
+        score: nearbyHighImpact ? clamp(signal.score - 1, 3, 10) : signal.score,
+        bias: signal.bias,
+        muted: nearbyHighImpact,
+      } satisfies HeatmapEntry;
+    }
+
+    if (snapshot) {
+      const movement = Math.abs(snapshot.percentChange || 0);
+      const directionalBias: Bias =
+        (snapshot.change || 0) > 0
+          ? "bullish"
+          : (snapshot.change || 0) < 0
+            ? "bearish"
+            : "neutral";
+      const snapshotScore = clamp(4 + Math.round(movement * 2), 3, 8);
+
+      return {
+        pair,
+        score: nearbyHighImpact ? clamp(snapshotScore - 1, 3, 10) : snapshotScore,
+        bias: directionalBias,
+        muted: nearbyHighImpact,
+      } satisfies HeatmapEntry;
+    }
 
     return {
       pair,
@@ -284,11 +394,13 @@ function deriveDashboardDecisionState({
   trades,
   newsEvents,
   bestTrade,
+  bestSignal,
   disciplineScore,
 }: {
   trades: Trade[];
   newsEvents: NewsEvent[];
   bestTrade?: Trade;
+  bestSignal?: PairAnalysisSignal;
   disciplineScore: number;
 }): DashboardDecisionState {
   const activeExposure = trades.filter((trade) => trade.status === "pending" || trade.status === "open");
@@ -340,6 +452,25 @@ function deriveDashboardDecisionState({
     };
   }
 
+  if (
+    !bestTrade &&
+    bestSignal &&
+    bestSignal.entryStatus === "CONFIRMED" &&
+    bestSignal.score >= 8 &&
+    !highImpactSoon &&
+    disciplineScore >= 6
+  ) {
+    return {
+      mode: "trade_now",
+      reason: `${bestSignal.pair} is CONFIRMED on the latest board scan and currently leads with a ${bestSignal.score}/10 score.`,
+      action: `Open ${bestSignal.pair} and execute only if chart structure is still aligned.`,
+      details: [
+        `${bestSignal.pair} was last scanned at ${bestSignal.updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+        "No high-impact event is inside the immediate buffer window.",
+      ],
+    };
+  }
+
   return {
     mode: "wait",
     reason: "Nothing on the board currently deserves immediate execution more than patience.",
@@ -378,6 +509,11 @@ export default function DashboardPage() {
     fallback: 0,
     failed: 0,
   });
+  const [pairSignals, setPairSignals] = useState<Partial<Record<CurrencyPair, PairAnalysisSignal>>>({});
+  const [pairSignalsLoading, setPairSignalsLoading] = useState(false);
+  const [pairSignalsError, setPairSignalsError] = useState<string | null>(null);
+  const [boardScanRunning, setBoardScanRunning] = useState(false);
+  const [boardScanStamp, setBoardScanStamp] = useState<Date | null>(null);
 
   // Fetch trades + news — reruns only when user changes (not on timeframe toggle)
   const refreshTradesAndNews = useCallback(async () => {
@@ -483,9 +619,60 @@ export default function DashboardPage() {
     );
   }, [authFetch, dashboardPairs, marketTimeframe, user]);
 
+  const refreshPairSignals = useCallback(async () => {
+    if (!user || dashboardPairs.length === 0) {
+      setPairSignals({});
+      setPairSignalsError(null);
+      return;
+    }
+
+    setPairSignalsLoading(true);
+    setPairSignalsError(null);
+
+    try {
+      const results = await Promise.allSettled(
+        dashboardPairs.map(async (pair) => {
+          const response = await authFetch(`/api/analysis?pair=${pair}&limit=1`);
+          if (!response.ok) {
+            throw new Error(`Failed to load latest analysis for ${pair}.`);
+          }
+
+          const data = await response.json() as { history?: Array<{ result?: unknown }> };
+          const latest = data.history?.[0]?.result;
+          return { pair, signal: latest ? parsePairAnalysisSignal(pair, latest) : null };
+        })
+      );
+
+      const nextSignals: Partial<Record<CurrencyPair, PairAnalysisSignal>> = {};
+      let failedCount = 0;
+
+      for (const result of results) {
+        if (result.status !== "fulfilled") {
+          failedCount += 1;
+          continue;
+        }
+
+        if (result.value.signal) {
+          nextSignals[result.value.pair] = result.value.signal;
+        }
+      }
+
+      setPairSignals(nextSignals);
+      if (failedCount > 0 && failedCount === results.length) {
+        setPairSignalsError("Could not load board analysis context. You can still run a fresh scan.");
+      }
+    } catch (error) {
+      console.error(error);
+      setPairSignals({});
+      setPairSignalsError("Could not load board analysis context. You can still run a fresh scan.");
+    } finally {
+      setPairSignalsLoading(false);
+    }
+  }, [authFetch, dashboardPairs, user]);
+
   const refreshDashboard = useCallback(async () => {
-    await Promise.all([refreshTradesAndNews(), refreshMarketSnapshots()]);
-  }, [refreshMarketSnapshots, refreshTradesAndNews]);
+    await Promise.all([refreshTradesAndNews(), refreshMarketSnapshots(), refreshPairSignals()]);
+  }, [refreshMarketSnapshots, refreshPairSignals, refreshTradesAndNews]);
 
   useEffect(() => {
     refreshTradesAndNews();
@@ -495,6 +682,10 @@ export default function DashboardPage() {
     refreshMarketSnapshots();
   }, [refreshMarketSnapshots]);
 
+  useEffect(() => {
+    refreshPairSignals();
+  }, [refreshPairSignals]);
+
   const refreshAll = async () => {
     await Promise.all([refetch(), refetchTrackedPairs(), refreshDashboard()]);
   };
@@ -503,6 +694,66 @@ export default function DashboardPage() {
     () => accounts.filter((account) => account.isActive),
     [accounts]
   );
+
+  const runFullBoardScan = useCallback(async () => {
+    if (dashboardPairs.length === 0) {
+      setPairSignalsError("Track at least one pair before running a full board scan.");
+      return;
+    }
+
+    if (activeAccounts.length === 0) {
+      setPairSignalsError("Add an active account first so analysis can run with proper risk rules.");
+      return;
+    }
+
+    setBoardScanRunning(true);
+    setPairSignalsError(null);
+
+    try {
+      const nextSignals: Partial<Record<CurrencyPair, PairAnalysisSignal>> = {};
+      let failedCount = 0;
+
+      for (const pair of dashboardPairs) {
+        const response = await authFetch("/api/analysis", {
+          method: "POST",
+          body: JSON.stringify({ pair, accounts: activeAccounts }),
+        });
+
+        const payload = await response.json().catch(() => ({} as { analysis?: unknown; error?: string }));
+        if (!response.ok) {
+          failedCount += 1;
+          continue;
+        }
+
+        const signal = parsePairAnalysisSignal(pair, payload.analysis);
+        if (signal) {
+          nextSignals[pair] = signal;
+        }
+      }
+
+      setPairSignals((previous) => ({ ...previous, ...nextSignals }));
+      setBoardScanStamp(new Date());
+
+      if (failedCount > 0 && failedCount === dashboardPairs.length) {
+        setPairSignalsError("Full scan failed across all pairs. Check API keys or try again in a few minutes.");
+      } else if (failedCount > 0) {
+        setPairSignalsError(`Full scan completed with ${failedCount} skipped pair${failedCount === 1 ? "" : "s"}.`);
+      } else {
+        setPairSignalsError(null);
+      }
+    } catch (error) {
+      console.error(error);
+      setPairSignalsError("Full scan failed before completion. Try again in a few minutes.");
+    } finally {
+      setBoardScanRunning(false);
+    }
+  }, [activeAccounts, authFetch, dashboardPairs]);
+
+  const clearBoardScan = useCallback(() => {
+    setPairSignals({});
+    setBoardScanStamp(null);
+    setPairSignalsError(null);
+  }, []);
 
   const accountCapacity = useMemo(
     () => activeAccounts.reduce((total, account) => total + account.maxTradesPerDay, 0),
@@ -534,8 +785,15 @@ export default function DashboardPage() {
 
   const currencyStrength = useMemo(() => deriveCurrencyStrength(trades), [trades]);
   const heatmap = useMemo(
-    () => buildHeatmap(trades, newsEvents, trackedPairs),
-    [newsEvents, trackedPairs, trades]
+    () =>
+      buildHeatmap({
+        trades,
+        newsEvents,
+        trackedPairs,
+        pairSignals,
+        marketSnapshots,
+      }),
+    [marketSnapshots, newsEvents, pairSignals, trackedPairs, trades]
   );
   const activeSetups = useMemo(() => buildActiveSetups(trades), [trades]);
   const confirmedPairs = useMemo(
@@ -548,6 +806,15 @@ export default function DashboardPage() {
       .filter((trade) => trade.status === "open" || trade.status === "pending")
       .sort((a, b) => b.aiScore - a.aiScore)[0];
   }, [trades]);
+  const bestSignal = useMemo(() => {
+    return Object.values(pairSignals)
+      .filter((signal): signal is PairAnalysisSignal => Boolean(signal))
+      .sort((left, right) => {
+        if (left.entryStatus === "CONFIRMED" && right.entryStatus !== "CONFIRMED") return -1;
+        if (right.entryStatus === "CONFIRMED" && left.entryStatus !== "CONFIRMED") return 1;
+        return right.score - left.score;
+      })[0];
+  }, [pairSignals]);
 
   const session = getSessionSnapshot(new Date());
   const upcomingHighImpact = newsEvents.filter((event) => {
@@ -560,9 +827,10 @@ export default function DashboardPage() {
         trades,
         newsEvents,
         bestTrade,
+        bestSignal,
         disciplineScore: stats.disciplineScore,
       }),
-    [bestTrade, newsEvents, stats.disciplineScore, trades]
+    [bestSignal, bestTrade, newsEvents, stats.disciplineScore, trades]
   );
 
   const waitHints = useMemo(() => {
@@ -570,11 +838,20 @@ export default function DashboardPage() {
 
     const topPairs = heatmap.slice(0, 3).map((item) => item.pair);
     const hints: string[] = [];
+    const watchedSignals = heatmap
+      .slice(0, 3)
+      .map((entry) => pairSignals[entry.pair])
+      .filter((entry): entry is PairAnalysisSignal => Boolean(entry));
 
     if (bestTrade) {
       hints.push(
-        `${bestTrade.pair}: ${bestTrade.direction.toLowerCase()} bias is closest — waiting for ${bestTrade.entryStatus === "CONFIRMED" ? "price alignment" : "CONFIRMED status"}.`
+        `${bestTrade.pair}: ${bestTrade.direction.toLowerCase()} bias is closest - waiting for ${bestTrade.entryStatus === "CONFIRMED" ? "price alignment" : "CONFIRMED status"}.`
       );
+    } else if (watchedSignals.length > 0) {
+      hints.push(`Watch pairs first: ${watchedSignals.map((signal) => signal.pair).join(", ")}.`);
+      watchedSignals.slice(0, 2).forEach((signal) => {
+        hints.push(`${signal.pair}: ${signal.entryStatus}. ${signal.nextStep}`);
+      });
     } else if (topPairs.length > 0) {
       hints.push(`Check-in order: ${topPairs.join(", ")}.`);
     } else if (trackedPairs.length > 0) {
@@ -587,8 +864,12 @@ export default function DashboardPage() {
       hints.push(`Hold risk until ${nextEvent.currency} ${nextEvent.event} in ${mins}m.`);
     }
 
+    if (pairSignalsError) {
+      hints.push(pairSignalsError);
+    }
+
     return hints;
-  }, [bestTrade, dashboardDecision.mode, heatmap, trackedPairs, upcomingHighImpact]);
+  }, [bestTrade, dashboardDecision.mode, heatmap, pairSignals, pairSignalsError, trackedPairs, upcomingHighImpact]);
 
   const providerHealth = useMemo(() => {
     const newsStatus: "healthy" | "degraded" | "down" =
@@ -765,11 +1046,44 @@ export default function DashboardPage() {
       {/* ── ROW 4: Heatmap + News countdown ── */}
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
-          <CardHeader>Setup Heatmap</CardHeader>
+          <CardHeader>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>Setup Heatmap</span>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={runFullBoardScan}
+                  disabled={boardScanRunning || dashboardPairs.length === 0 || activeAccounts.length === 0}
+                >
+                  {boardScanRunning ? "Running..." : "Run Full Analysis"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={clearBoardScan}
+                  disabled={boardScanRunning || Object.keys(pairSignals).length === 0}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
           <p className="mb-4 text-xs text-gray-500">
             Active pairs surface first. News-heavy pairs stay muted until conditions improve.
           </p>
-          <SetupHeatmap data={heatmap} confirmedPairs={confirmedPairs} />
+          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+            <span>{pairSignalsLoading ? "Loading board context..." : `${Object.keys(pairSignals).length} pair scans loaded`}</span>
+            {boardScanStamp ? (
+              <span>Last full scan {boardScanStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            ) : null}
+          </div>
+          {pairSignalsError ? (
+            <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {pairSignalsError}
+            </div>
+          ) : null}
+          <SetupHeatmap data={heatmap} confirmedPairs={confirmedPairs} signals={pairSignals} />
         </Card>
 
         <div className="space-y-4">
@@ -900,9 +1214,34 @@ export default function DashboardPage() {
                 </Button>
               </div>
             </div>
+          ) : bestSignal ? (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-lg font-bold text-white">{bestSignal.pair}</div>
+                  <div className={cn("text-sm font-medium", getBiasColor(bestSignal.bias))}>
+                    Latest board scan
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white/5 px-3 py-2 text-center">
+                  <div className="text-[10px] text-gray-500">Score</div>
+                  <div className="text-lg font-bold text-white">{bestSignal.score}/10</div>
+                </div>
+              </div>
+              <StatusBadge status={bestSignal.entryStatus} size="sm" showAction />
+              <p className="text-sm leading-6 text-gray-400">{bestSignal.nextStep}</p>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Link href={`/pairs/${bestSignal.pair}`} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-brand-300 hover:text-brand-200">
+                  Open workspace &rarr;
+                </Link>
+                <Button variant="secondary" size="sm" onClick={runFullBoardScan} disabled={boardScanRunning}>
+                  {boardScanRunning ? "Running..." : "Refresh Scan"}
+                </Button>
+              </div>
+            </div>
           ) : (
             <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
-              No trades on the board yet. Run pair analysis to surface setups.
+              No board setup yet. Run full analysis on tracked pairs to surface candidates.
             </div>
           )}
         </Card>
