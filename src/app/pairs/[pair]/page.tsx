@@ -55,6 +55,28 @@ interface ActionFeedback {
   message: string;
 }
 
+type ChecklistKey =
+  | "structureConfirmed"
+  | "newsBufferRespected"
+  | "riskReviewed"
+  | "executionReady";
+
+type TradeChecklist = Record<ChecklistKey, boolean>;
+
+const CHECKLIST_ITEMS: Array<{ key: ChecklistKey; label: string }> = [
+  { key: "structureConfirmed", label: "Chart structure still confirms the setup." },
+  { key: "newsBufferRespected", label: "No high-impact news risk is inside my execution window." },
+  { key: "riskReviewed", label: "I reviewed lot size, stop loss, and max loss for this account." },
+  { key: "executionReady", label: "I am ready to execute exactly as planned with no impulse edits." },
+];
+
+const EMPTY_CHECKLIST: TradeChecklist = {
+  structureConfirmed: false,
+  newsBufferRespected: false,
+  riskReviewed: false,
+  executionReady: false,
+};
+
 const WORKSPACE_TABS: Array<{
   id: PairWorkspaceTab;
   label: string;
@@ -171,6 +193,8 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   }>({});
   const [riskNote, setRiskNote] = useState<string | null>(null);
   const [autoCalcTick, setAutoCalcTick] = useState(0);
+  const [checklistsByAccount, setChecklistsByAccount] = useState<Record<string, TradeChecklist>>({});
+  const [timeTick, setTimeTick] = useState(() => Date.now());
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const analysis = result?.analysis;
@@ -183,17 +207,29 @@ export default function PairPage({ params }: { params: { pair: string } }) {
       direction: analysis.tradeSetup.direction,
     };
   }, [analysis, executionPrice]);
+  const analysisAgeMinutes = cachedAt ? Math.max(0, Math.floor((timeTick - cachedAt) / 60_000)) : null;
+  const analysisIsStale = analysisAgeMinutes !== null && analysisAgeMinutes >= 60;
 
   useEffect(() => {
     clear();
     setMarketNotes("");
     setExecutionPrice("");
     setFeedbackByAccount({});
+    setChecklistsByAccount({});
     setMarketSnapshot(null);
     setMarketEvents([]);
     setMarketError(null);
     setActiveTab("market");
   }, [clear, params.pair]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTimeTick(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    setChecklistsByAccount({});
+  }, [cachedAt]);
 
   useEffect(() => {
     if (pair && result?.analysis?.tradeSetup) {
@@ -610,10 +646,21 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const runAnalysis = async () => {
     if (!pair || activeAccounts.length === 0) return;
     setFeedbackByAccount({});
+    setChecklistsByAccount({});
     const analysisResult = await analyze(pair, activeAccounts, marketNotes.trim() || undefined);
     if (analysisResult) {
       setActiveTab("analysis");
     }
+  };
+
+  const updateChecklist = (accountId: string, key: ChecklistKey, checked: boolean) => {
+    setChecklistsByAccount((current) => ({
+      ...current,
+      [accountId]: {
+        ...(current[accountId] || EMPTY_CHECKLIST),
+        [key]: checked,
+      },
+    }));
   };
 
   const saveFeedback = (accountId: string, tone: FeedbackTone, message: string) => {
@@ -1011,16 +1058,28 @@ export default function PairPage({ params }: { params: { pair: string } }) {
               ) : null}
 
               {cachedAt && !loading ? (
-                <div className="mt-4 flex items-center justify-between rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-                  <span className="text-xs text-yellow-300">
-                    Cached result from {new Date(cachedAt).toLocaleTimeString()} — re-run to refresh
+                <div
+                  className={cn(
+                    "mt-4 flex items-center justify-between rounded-xl px-4 py-3",
+                    analysisIsStale
+                      ? "border border-red-500/25 bg-red-500/10"
+                      : "border border-yellow-500/20 bg-yellow-500/5"
+                  )}
+                >
+                  <span className={cn("text-xs", analysisIsStale ? "text-red-200" : "text-yellow-300")}>
+                    Cached result from {new Date(cachedAt).toLocaleTimeString()}
+                    {analysisAgeMinutes !== null ? ` (${analysisAgeMinutes}m old)` : ""}
+                    {analysisIsStale ? " — stale, run analysis again before recording trades." : " — re-run to refresh."}
                   </span>
                   <button
                     type="button"
                     onClick={() => { clear(); runAnalysis(); }}
-                    className="ml-4 text-xs font-semibold text-yellow-200 underline underline-offset-2 hover:text-white"
+                    className={cn(
+                      "ml-4 text-xs font-semibold underline underline-offset-2 hover:text-white",
+                      analysisIsStale ? "text-red-200" : "text-yellow-200"
+                    )}
                   >
-                    Refresh
+                    Re-run
                   </button>
                 </div>
               ) : null}
@@ -1197,8 +1256,18 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                       pair,
                     })
                   : [];
-                const canRecordTrade = analysis ? blockers.length === 0 : false;
-                const hasBlockers = analysis ? blockers.length > 0 : false;
+                const checklist = checklistsByAccount[account.id] || EMPTY_CHECKLIST;
+                const checklistComplete = CHECKLIST_ITEMS.every((item) => checklist[item.key]);
+                const checklistMissing = CHECKLIST_ITEMS
+                  .filter((item) => !checklist[item.key])
+                  .map((item) => `Checklist: ${item.label}`);
+                const blockersForDisplay = [
+                  ...blockers,
+                  ...(analysisIsStale ? ["Analysis is stale. Re-run before recording trade."] : []),
+                  ...checklistMissing,
+                ];
+                const canRecordTrade = analysis ? blockers.length === 0 && checklistComplete && !analysisIsStale : false;
+                const hasSystemBlockers = analysis ? blockers.length > 0 : false;
                 const feedback = feedbackByAccount[account.id];
 
                 return (
@@ -1308,13 +1377,30 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                           </div>
                         </div>
 
+                        <div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-surface px-3 py-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Pre-trade Checklist
+                          </div>
+                          {CHECKLIST_ITEMS.map((item) => (
+                            <label key={`${account.id}-${item.key}`} className="flex items-start gap-2 text-sm text-slate-300">
+                              <input
+                                type="checkbox"
+                                checked={checklist[item.key]}
+                                onChange={(event) => updateChecklist(account.id, item.key, event.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded border-white/20 bg-surface text-brand-500"
+                              />
+                              <span>{item.label}</span>
+                            </label>
+                          ))}
+                        </div>
+
                         {canRecordTrade ? (
                           <p className="mt-3 text-sm text-gray-300">
                             This account passed the denial checks and can be recorded as an open trade.
                           </p>
                         ) : (
                           <ul className="mt-3 space-y-2 text-sm text-red-200">
-                            {blockers.slice(0, 4).map((blocker, index) => (
+                            {blockersForDisplay.slice(0, 5).map((blocker, index) => (
                               <li key={`${account.id}-blocker-${index}`} className="rounded-lg bg-red-500/5 px-3 py-2">
                                 {blocker}
                               </li>
@@ -1333,7 +1419,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                           <Button
                             variant="secondary"
                             onClick={() => logDenial(account)}
-                            disabled={!hasBlockers || activeActionId !== null}
+                            disabled={!hasSystemBlockers || activeActionId !== null}
                             className="w-full sm:w-auto"
                           >
                             {activeActionId === `${account.id}:deny` ? "Logging..." : "Log Denial"}
