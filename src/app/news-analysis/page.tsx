@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button, Card, CardHeader, EntryStatusCard, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS } from "@/config/trading";
@@ -113,7 +113,7 @@ export default function NewsAnalysisPage() {
   ];
 
   // Pull the live economic calendar so the tab is ready with one-click signals
-  const loadEvents = async (isRefresh = false) => {
+  const loadEvents = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshingEvents(true);
     } else {
@@ -139,11 +139,11 @@ export default function NewsAnalysisPage() {
       setEventsLoading(false);
       setRefreshingEvents(false);
     }
-  };
+  }, [authFetch]);
 
   useEffect(() => {
     loadEvents();
-  }, [authFetch]);
+  }, [loadEvents]);
 
   // Auto-refresh every 15 minutes when tab is visible
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function NewsAnalysisPage() {
   };
 
   const pinnedBrief = {
-    title: "Today’s Market Brief (auto)",
+    title: "Market Context & Execution Tips",
     bullets: [
       "Middle East tension (US–Iran) keeps oil elevated → feeds inflation and risk-off moves.",
       "USD bias: strengthens on fear, softens when risk steadies; momentum is choppy intraday.",
@@ -250,7 +250,7 @@ export default function NewsAnalysisPage() {
         <div className="flex items-center justify-between gap-3">
           <CardHeader className="mb-0">{pinnedBrief.title}</CardHeader>
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
-            <span className="rounded-full bg-brand-500/15 px-2 py-1 text-brand-200">auto</span>
+            <span className="rounded-full bg-slate-500/15 px-2 py-1 text-slate-400">static</span>
             {eventsLastUpdated ? (
               <span className="text-slate-400">
                 Updated {eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

@@ -632,7 +632,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const chartMarkers = [...swingMarkers, ...eventMarkers];
 
   const runAnalysis = async () => {
-    if (activeAccounts.length === 0) return;
+    if (!pair || activeAccounts.length === 0) return;
     setFeedbackByAccount({});
     setRestoredFromHistory(false);
     const analysisResult = await analyze(pair, activeAccounts, marketNotes.trim() || undefined);
@@ -660,7 +660,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   };
 
   const recordTrade = async (account: TradingAccount) => {
-    if (!analysis || !analysis.tradeSetup) return;
+    if (!pair || !analysis || !analysis.tradeSetup) return;
 
     const denialResult = result?.denialResults[account.id];
     const blockers = getExecutionBlockers({

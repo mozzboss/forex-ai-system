@@ -1401,20 +1401,39 @@ export async function getMissedConfirmedZones(
       .map(parseMissedZoneResult)
       .filter((z): z is MissedConfirmedZone => z !== null);
 
+    if (confirmed.length === 0) return [];
+
+    // Batch trade lookup — one query instead of N separate ones
+    const earliest = confirmed.reduce(
+      (min, z) => (z.missedAt < min ? z.missedAt : min),
+      confirmed[0].missedAt
+    );
+    const latest = new Date(
+      Math.max(...confirmed.map((z) => z.missedAt.getTime() + MISSED_ZONE_WINDOW_MS))
+    );
+    const pairsToCheck = [...new Set(confirmed.map((z) => z.pair))];
+
+    const trades = await prisma.trade.findMany({
+      where: {
+        userId,
+        pair: { in: pairsToCheck },
+        createdAt: { gte: earliest, lte: latest },
+      },
+      select: { id: true, pair: true, createdAt: true },
+    });
+
     const missed: MissedConfirmedZone[] = [];
 
     for (const zone of confirmed) {
       if (missed.length >= limit) break;
       const windowEnd = new Date(zone.missedAt.getTime() + MISSED_ZONE_WINDOW_MS);
-      const trade = await prisma.trade.findFirst({
-        where: {
-          userId,
-          pair: zone.pair,
-          createdAt: { gte: zone.missedAt, lte: windowEnd },
-        },
-        select: { id: true },
-      });
-      if (!trade) {
+      const hasTrade = trades.some(
+        (t) =>
+          t.pair === zone.pair &&
+          t.createdAt >= zone.missedAt &&
+          t.createdAt <= windowEnd
+      );
+      if (!hasTrade) {
         missed.push(zone);
       }
     }
