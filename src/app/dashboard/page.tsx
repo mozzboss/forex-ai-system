@@ -36,6 +36,7 @@ interface HeatmapEntry {
   pair: CurrencyPair;
   score: number;
   bias: Bias;
+  muted?: boolean;
 }
 
 interface ActiveSetupCard {
@@ -203,6 +204,7 @@ function buildHeatmap(trades: Trade[], newsEvents: NewsEvent[], trackedPairs: Cu
       pair,
       score: nearbyHighImpact ? 4 : 5,
       bias: "neutral",
+      muted: nearbyHighImpact,
     } satisfies HeatmapEntry;
   });
 }

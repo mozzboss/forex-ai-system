@@ -10,6 +10,7 @@ interface HeatmapEntry {
   pair: CurrencyPair;
   score: number;
   bias: Bias;
+  muted?: boolean;
 }
 
 interface SetupHeatmapProps {
@@ -30,7 +31,7 @@ export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
 
   return (
     <div className="grid grid-cols-3 gap-1.5">
-      {sorted.map(({ pair, score, bias }) => {
+      {sorted.map(({ pair, score, bias, muted }) => {
         const intensity = score / 10;
         const isConfirmed = confirmedPairs?.has(pair) ?? false;
         const bgColor =
@@ -46,7 +47,8 @@ export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
             href={`/pairs/${pair}`}
             className={cn(
               "relative cursor-pointer rounded-lg border p-2 text-center transition-all hover:border-white/15",
-              isConfirmed ? "border-green-500/40" : "border-white/5"
+              isConfirmed ? "border-green-500/40" : "border-white/5",
+              muted && "grayscale-[0.35] opacity-80 hover:opacity-100"
             )}
             style={{ backgroundColor: bgColor }}
           >
@@ -54,6 +56,11 @@ export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
               <span className="absolute right-1.5 top-1.5 flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+              </span>
+            ) : null}
+            {muted ? (
+              <span className="absolute left-1.5 top-1.5 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                News
               </span>
             ) : null}
             <div className="text-[10px] font-mono text-gray-400">{pair}</div>
