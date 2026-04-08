@@ -1,4 +1,4 @@
-import type { Currency, CurrencyPair, DailyPlan, EndOfDayReview, Trade } from "@/types";
+import type { Currency, CurrencyPair, DailyPlan, EndOfDayReview, NewsAnalysisResult, Trade } from "@/types";
 import type { PairDecisionSignal } from "@/lib/market/decision";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
@@ -371,6 +371,39 @@ export function formatReadyAlert(
     buildTelegramSection("Do now", [
       "Prepare levels. Wait for CONFIRMED status before entry.",
     ]),
+  ];
+
+  return sections.filter(Boolean).join("\n\n");
+}
+
+export function formatNewsAnalysisAlert(result: NewsAnalysisResult): string {
+  const pairStr = result.pair ?? "MULTI";
+  const decisionStr = result.finalDecision.decision.replace("_", " ");
+
+  const sections = [
+    buildTelegramHeader("NEWS SIGNAL", pairStr, decisionStr),
+    truncateTelegramText(result.newsSummary, 200),
+    "",
+    buildMetricRow([
+      ["Bias", result.tradingBias.bias.toUpperCase()],
+      ["Conf", result.tradingBias.confidence.toUpperCase()],
+      ["Score", `${result.finalDecision.score}/10`],
+      ["Status", result.entryStatus],
+    ]),
+    result.tradeIdea
+      ? buildMetricRow([
+          ["Dir", result.tradeIdea.direction],
+          ["Entry", `${formatPrice(result.tradeIdea.entryZoneLow)}-${formatPrice(result.tradeIdea.entryZoneHigh)}`],
+          ["SL", formatPrice(result.tradeIdea.stopLoss)],
+          ["TP", formatPrice(result.tradeIdea.takeProfit)],
+        ])
+      : null,
+    buildTelegramSection("Impact", [
+      `${result.marketImpact.strongerCurrency} stronger vs ${result.marketImpact.weakerCurrency} — ${truncateTelegramText(result.marketImpact.reasoning, 100)}`,
+    ]),
+    buildTelegramSection("Risk", [truncateTelegramText(result.riskNotes.fakeoutRisk, 120)]),
+    buildTelegramSection("Wait for", [truncateTelegramText(result.proInsight.waitForConfirmation, 120)]),
+    buildTelegramSection("Decision", [truncateTelegramText(result.finalDecision.reasoning, 160)]),
   ];
 
   return sections.filter(Boolean).join("\n\n");

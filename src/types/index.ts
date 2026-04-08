@@ -347,7 +347,8 @@ export interface TelegramAlert {
     | "news_warning"
     | "move_sl_tp"
     | "daily_briefing"
-    | "end_of_day_summary";
+    | "end_of_day_summary"
+    | "news_analysis";
   pair?: CurrencyPair;
   message: string;
   data?: Record<string, unknown>;
@@ -364,6 +365,59 @@ export interface TelegramConnectionStatus {
 
 export interface TrackedPairsPreference {
   trackedPairs: CurrencyPair[];
+}
+
+// --- Missed Confirmed Zones ---
+
+// --- News Analysis ---
+
+export interface NewsMarketImpact {
+  strongerCurrency: Currency;
+  weakerCurrency: Currency;
+  reasoning: string;
+}
+
+export interface NewsTradingBias {
+  pair: CurrencyPair | null;
+  bias: Bias;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface NewsTradeIdea {
+  direction: TradeDirection;
+  entryZoneLow: number;
+  entryZoneHigh: number;
+  stopLoss: number;
+  takeProfit: number;
+}
+
+export interface NewsRiskNotes {
+  upcomingNews: string;
+  fakeoutRisk: string;
+  volatilityWarning: string;
+}
+
+export interface NewsProInsight {
+  shortTermView: string;
+  longTermView: string;
+  pricedIn: boolean;
+  waitForConfirmation: string;
+}
+
+export interface NewsAnalysisResult {
+  headline: string;
+  summary: string;
+  pair: CurrencyPair | null;
+  analyzedAt: Date;
+  newsSummary: string;
+  marketImpact: NewsMarketImpact;
+  tradingBias: NewsTradingBias;
+  entryStatus: EntryStatus;
+  entryStatusReason: string;
+  tradeIdea: NewsTradeIdea | null;
+  riskNotes: NewsRiskNotes;
+  proInsight: NewsProInsight;
+  finalDecision: FinalDecision;
 }
 
 // --- Missed Confirmed Zones ---

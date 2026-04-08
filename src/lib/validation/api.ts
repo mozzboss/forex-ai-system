@@ -252,3 +252,11 @@ export const trackedPairsPreferenceSchema = z.object({
 
 export const queryTradeStatusSchema = tradeStatusSchema;
 export const queryJournalEntryTypeSchema = journalEntryTypeSchema;
+
+export const newsAnalysisRequestSchema = z.object({
+  headline: z.string().trim().min(5).max(500),
+  summary: z.string().trim().max(3000).default(""),
+  pair: currencyPairSchema.optional(),
+  currentPrice: z.number().positive().optional(),
+  sendTelegram: z.boolean().optional(),
+});
