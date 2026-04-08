@@ -14,7 +14,7 @@ export function StatusBadge({ status, size = "md", showAction = false }: StatusB
     <div className="flex items-center gap-2">
       <span
         className={cn(
-          "inline-flex items-center rounded-lg border font-bold",
+          "inline-flex items-center rounded-xl border font-semibold tracking-wide shadow-[0_10px_30px_-25px_rgba(0,0,0,0.8)] backdrop-blur",
           getStatusBg(status),
           getStatusColor(status),
           {

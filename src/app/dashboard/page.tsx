@@ -499,6 +499,10 @@ export default function DashboardPage() {
     [newsEvents, trackedPairs, trades]
   );
   const activeSetups = useMemo(() => buildActiveSetups(trades), [trades]);
+  const confirmedPairs = useMemo(
+    () => new Set(activeSetups.filter((s) => s.entryStatus === "CONFIRMED").map((s) => s.pair)),
+    [activeSetups]
+  );
 
   const bestTrade = useMemo(() => {
     return [...trades]
@@ -658,7 +662,7 @@ export default function DashboardPage() {
           <p className="mb-4 text-xs text-gray-500">
             Active pairs surface first. News-heavy pairs stay muted until conditions improve.
           </p>
-          <SetupHeatmap data={heatmap} />
+          <SetupHeatmap data={heatmap} confirmedPairs={confirmedPairs} />
         </Card>
 
         <div className="space-y-4">

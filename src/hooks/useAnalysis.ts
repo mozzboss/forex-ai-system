@@ -98,6 +98,19 @@ export function useAnalysis() {
     [authFetch]
   );
 
+  const restore = useCallback(
+    (restoredPair: CurrencyPair, restoredResult: AnalysisResult, fetchedAt: number) => {
+      const deserialized: AnalysisResult = {
+        ...restoredResult,
+        analysis: deserializeAnalysis(restoredResult.analysis),
+      };
+      cache.current = { pair: restoredPair, result: deserialized, fetchedAt };
+      setResult(deserialized);
+      setCachedAt(fetchedAt);
+    },
+    []
+  );
+
   const clear = useCallback(() => {
     cache.current = null;
     setResult(null);
@@ -105,5 +118,5 @@ export function useAnalysis() {
     setError(null);
   }, []);
 
-  return { result, loading, error, cachedAt, analyze, clear };
+  return { result, loading, error, cachedAt, analyze, restore, clear };
 }

@@ -17,19 +17,19 @@ const MODE_COPY: Record<DecisionMode, { label: string; badge: string; tone: stri
     label: "TRADE NOW",
     badge: "Conditions aligned",
     tone: "text-green-300",
-    bg: "border-green-500/25 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.18),_transparent_40%),rgba(15,23,42,0.92)]",
+    bg: "border-brand-500/35 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.22),_transparent_42%),rgba(6,10,20,0.96)]",
   },
   wait: {
     label: "WAIT",
     badge: "No entry yet",
     tone: "text-yellow-300",
-    bg: "border-yellow-500/25 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.16),_transparent_40%),rgba(15,23,42,0.92)]",
+    bg: "border-yellow-500/30 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.20),_transparent_42%),rgba(6,10,20,0.96)]",
   },
   exit_now: {
     label: "EXIT NOW",
     badge: "Protect capital",
     tone: "text-red-300",
-    bg: "border-red-500/25 bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.16),_transparent_40%),rgba(15,23,42,0.92)]",
+    bg: "border-red-500/30 bg-[radial-gradient(circle_at_top_left,_rgba(239,68,68,0.20),_transparent_42%),rgba(6,10,20,0.96)]",
   },
 };
 
@@ -48,7 +48,7 @@ export function DecisionPanel({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-4 sm:p-5",
+        "rounded-2xl border p-4 shadow-[0_25px_70px_-50px_rgba(0,0,0,0.8)] sm:p-5",
         copy.bg,
         stickyMobile && "sticky top-3 z-30 lg:static",
         className

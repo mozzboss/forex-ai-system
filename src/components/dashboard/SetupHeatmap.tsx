@@ -14,9 +14,10 @@ interface HeatmapEntry {
 
 interface SetupHeatmapProps {
   data: HeatmapEntry[];
+  confirmedPairs?: Set<string>;
 }
 
-export function SetupHeatmap({ data }: SetupHeatmapProps) {
+export function SetupHeatmap({ data, confirmedPairs }: SetupHeatmapProps) {
   const sorted = [...data].sort((a, b) => b.score - a.score);
 
   if (sorted.length === 0) {
@@ -31,6 +32,7 @@ export function SetupHeatmap({ data }: SetupHeatmapProps) {
     <div className="grid grid-cols-3 gap-1.5">
       {sorted.map(({ pair, score, bias }) => {
         const intensity = score / 10;
+        const isConfirmed = confirmedPairs?.has(pair) ?? false;
         const bgColor =
           bias === "bullish"
             ? `rgba(34, 197, 94, ${intensity * 0.3})`
@@ -42,9 +44,18 @@ export function SetupHeatmap({ data }: SetupHeatmapProps) {
           <Link
             key={pair}
             href={`/pairs/${pair}`}
-            className="cursor-pointer rounded-lg border border-white/5 p-2 text-center transition-all hover:border-white/15"
+            className={cn(
+              "relative cursor-pointer rounded-lg border p-2 text-center transition-all hover:border-white/15",
+              isConfirmed ? "border-green-500/40" : "border-white/5"
+            )}
             style={{ backgroundColor: bgColor }}
           >
+            {isConfirmed ? (
+              <span className="absolute right-1.5 top-1.5 flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+              </span>
+            ) : null}
             <div className="text-[10px] font-mono text-gray-400">{pair}</div>
             <div className={cn("mt-0.5 text-xs font-bold", getBiasColor(bias))}>
               {score}/10

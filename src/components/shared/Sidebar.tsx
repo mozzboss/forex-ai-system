@@ -28,11 +28,17 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
   const { user, signOut } = useAuth();
 
   return (
-    <aside className={cn("flex w-72 shrink-0 flex-col border-r border-white/5 bg-surface-light", className)} {...props}>
-      <div className="border-b border-white/5 p-5">
+    <aside
+      className={cn(
+        "flex w-72 shrink-0 flex-col border-r border-white/10 bg-gradient-to-b from-surface-light/95 via-surface/95 to-surface/90 shadow-[20px_0_60px_-60px_rgba(0,0,0,0.6)] backdrop-blur",
+        className
+      )}
+      {...props}
+    >
+      <div className="border-b border-white/10 p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold tracking-tight">
+            <h1 className="text-lg font-bold tracking-tight text-white">
               <span className="text-brand-500">Forex</span> AI
             </h1>
             <p className="mt-0.5 text-xs text-gray-500">Discipline | Risk | Clarity</p>
@@ -54,35 +60,44 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
-            <Link
-              key={href}
-              href={href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                isActive ? "bg-white/10 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
-              )}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div key={href} className="relative">
+              <span
+                className={cn(
+                  "absolute left-1 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full bg-brand-500 transition-opacity duration-150",
+                  isActive ? "opacity-100" : "opacity-0"
+                )}
+              />
+              <Link
+                href={href}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-4 py-2.5 pl-6 text-sm transition-all duration-150",
+                  isActive
+                    ? "border border-white/10 bg-white/5 text-white shadow-[0_10px_40px_-30px_rgba(45,212,191,0.6)]"
+                    : "text-gray-400 hover:border hover:border-white/10 hover:bg-white/5 hover:text-white"
+                )}
               >
-                <path d={icon} />
-              </svg>
-              {label}
-            </Link>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d={icon} />
+                </svg>
+                {label}
+              </Link>
+            </div>
           );
         })}
       </nav>
 
-      <div className="border-t border-white/5 p-4">
-        <div className="rounded-2xl border border-white/10 bg-surface p-4">
+      <div className="border-t border-white/10 p-4">
+        <div className="rounded-2xl border border-white/10 bg-surface/90 p-4 shadow-[0_18px_50px_-40px_rgba(0,0,0,0.7)]">
           <div className="text-[10px] uppercase tracking-[0.24em] text-gray-500">Signed In</div>
           <div className="mt-2 text-sm font-medium text-white">{user?.email || "Authenticated trader"}</div>
           <div className="mt-1 text-[11px] text-gray-500">

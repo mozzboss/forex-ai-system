@@ -8,9 +8,9 @@ import { useAuth } from "./AuthProvider";
 
 function LoadingScreen({ message }: { message: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-6">
-      <div className="max-w-md rounded-3xl border border-white/10 bg-surface-light px-6 py-8 text-center">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-300/80">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface via-surface-light/80 to-surface px-6">
+      <div className="max-w-md rounded-3xl border border-white/10 bg-surface-light/90 px-6 py-8 text-center shadow-[0_25px_80px_-50px_rgba(0,0,0,0.7)] backdrop-blur">
+        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-500/80">
           Forex AI
         </div>
         <h1 className="mt-3 text-2xl font-bold text-white">Securing your workspace</h1>
@@ -81,10 +81,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </>
       ) : null}
 
-      <main className="min-w-0 flex-1 overflow-y-auto bg-surface">
-        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-surface/95 px-4 py-3 backdrop-blur lg:hidden">
+      <main className="relative min-w-0 flex-1 overflow-y-auto bg-surface">
+        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-surface/85 px-4 py-3 backdrop-blur lg:hidden">
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-brand-300/80">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-brand-500/80">
               Forex AI
             </div>
             <div className="text-sm font-semibold text-white">Mobile Workspace</div>
@@ -92,7 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200 transition-colors hover:bg-white/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200 transition-all hover:-translate-y-[1px] hover:bg-white/10 hover:text-white"
           >
             <span
               aria-hidden="true"
