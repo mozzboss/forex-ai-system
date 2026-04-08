@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CURRENCIES } from "@/config/trading";
-import { fetchEconomicCalendar } from "@/lib/market/news";
+import { addDays, fetchEconomicCalendar, fetchFmpEconomicCalendar } from "@/lib/market/news";
 import { AuthenticationError, requireAppUserId } from "@/lib/server/auth";
 import { Currency } from "@/types";
 
@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
   const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 50) : 10;
 
   try {
-    const primaryImpact = searchParams.get("impact") === "high" ? "high" : "medium";
+    const impactParam = searchParams.get("impact");
+    const primaryImpact = impactParam === "high" || impactParam === "low" ? impactParam : "medium";
     const currencyParams = searchParams
       .getAll("currency")
       .flatMap((value) => value.split(","))
@@ -40,17 +41,40 @@ export async function GET(req: NextRequest) {
       { minimumImpact: "low", extendDays: 7 },
     ];
 
+    const currencies = currencyParams.length > 0 ? currencyParams : undefined;
+
     for (const attempt of attempts) {
-      const events = await fetchEconomicCalendar({
-        currencies: currencyParams.length > 0 ? currencyParams : undefined,
+      const to = attempt.extendDays ? addDays(new Date(), attempt.extendDays) : undefined;
+      const options = {
+        currencies,
         limit,
         minimumImpact: attempt.minimumImpact,
-        to: attempt.extendDays ? addDays(new Date(), attempt.extendDays) : undefined,
+        to,
+      } as const;
+
+      const fmpEvents = await fetchFmpEconomicCalendar(options).catch((error) => {
+        console.error("FMP news fetch failed:", error);
+        return [];
       });
 
-      if (events.length > 0) {
+      if (fmpEvents.length > 0) {
         return NextResponse.json({
-          events,
+          events: fmpEvents,
+          source: "fmp",
+          fallback: false,
+          minimumImpact: attempt.minimumImpact,
+          window: attempt.extendDays ? `today+${attempt.extendDays}d` : "today+3d",
+        });
+      }
+
+      const teEvents = await fetchEconomicCalendar(options).catch((error) => {
+        console.error("TradingEconomics news fetch failed:", error);
+        return [];
+      });
+
+      if (teEvents.length > 0) {
+        return NextResponse.json({
+          events: teEvents,
           source: "tradingeconomics",
           fallback: false,
           minimumImpact: attempt.minimumImpact,
@@ -59,7 +83,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ error: "No upcoming events returned from provider." }, { status: 204 });
+    return NextResponse.json({
+      events: [],
+      source: "none",
+      fallback: false,
+      error: "No upcoming events returned from providers.",
+    });
   } catch (error) {
     console.error("News fetch failed:", error);
     return NextResponse.json({ error: "News feed unavailable" }, { status: 503 });

@@ -10,22 +10,51 @@ interface TradingEconomicsCalendarEntry {
   Previous?: string;
 }
 
+interface FmpEconomicCalendarEntry {
+  date?: string;
+  event?: string;
+  country?: string;
+  currency?: string;
+  impact?: number | string;
+  estimate?: string | number;
+  forecast?: string | number;
+  previous?: string | number;
+}
+
 interface FetchEconomicCalendarOptions {
   currencies?: Currency[];
   from?: Date;
   to?: Date;
   limit?: number;
-  minimumImpact?: "medium" | "high";
+  minimumImpact?: "low" | "medium" | "high";
 }
 
 const TRADING_ECONOMICS_BASE_URL = "https://api.tradingeconomics.com";
+const FMP_BASE_URL = "https://financialmodelingprep.com";
 const TRACKED_CURRENCIES = new Set<Currency>(CURRENCIES);
+const COUNTRY_TO_CURRENCY: Record<string, Currency> = {
+  "united states": "USD",
+  usa: "USD",
+  "euro zone": "EUR",
+  eurozone: "EUR",
+  germany: "EUR",
+  france: "EUR",
+  italy: "EUR",
+  spain: "EUR",
+  "united kingdom": "GBP",
+  uk: "GBP",
+  japan: "JPY",
+  switzerland: "CHF",
+  australia: "AUD",
+  "new zealand": "NZD",
+  canada: "CAD",
+};
 
 function toDateParam(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function addDays(date: Date, days: number) {
+export function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
@@ -38,11 +67,56 @@ function normalizeCurrency(value?: string): Currency | null {
 }
 
 function normalizeImpact(value?: number | string): NewsEvent["impact"] | null {
-  const importance = typeof value === "string" ? Number(value) : value;
-  if (importance === 3) return "high";
-  if (importance === 2) return "medium";
-  if (importance === 1) return "low";
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    if (value >= 3) return "high";
+    if (value === 2) return "medium";
+    if (value === 1) return "low";
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "high" || normalized === "3") return "high";
+  if (normalized === "medium" || normalized === "med" || normalized === "2") return "medium";
+  if (normalized === "low" || normalized === "1") return "low";
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed >= 3) return "high";
+  if (parsed === 2) return "medium";
+  if (parsed === 1) return "low";
+
   return null;
+}
+
+function normalizeCountryCurrency(country?: string): Currency | null {
+  if (!country) {
+    return null;
+  }
+
+  return COUNTRY_TO_CURRENCY[country.trim().toLowerCase()] ?? null;
+}
+
+function toOptionalString(value?: string | number) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function meetsMinimumImpact(
+  impact: NewsEvent["impact"],
+  minimumImpact: NonNullable<FetchEconomicCalendarOptions["minimumImpact"]>
+) {
+  if (minimumImpact === "low") return true;
+  if (minimumImpact === "medium") return impact !== "low";
+  return impact === "high";
 }
 
 function mapCalendarEntry(entry: TradingEconomicsCalendarEntry): NewsEvent | null {
@@ -62,6 +136,26 @@ function mapCalendarEntry(entry: TradingEconomicsCalendarEntry): NewsEvent | nul
     impact,
     forecast: entry.Forecast?.trim() || undefined,
     previous: entry.Previous?.trim() || undefined,
+  };
+}
+
+function mapFmpCalendarEntry(entry: FmpEconomicCalendarEntry): NewsEvent | null {
+  const time = entry.date ? new Date(entry.date) : null;
+  const event = entry.event?.trim();
+  const currency = normalizeCurrency(entry.currency) ?? normalizeCountryCurrency(entry.country);
+  const impact = normalizeImpact(entry.impact) ?? "medium";
+
+  if (!time || Number.isNaN(time.getTime()) || !currency || !event) {
+    return null;
+  }
+
+  return {
+    time,
+    currency,
+    event,
+    impact,
+    forecast: toOptionalString(entry.forecast ?? entry.estimate),
+    previous: toOptionalString(entry.previous),
   };
 }
 
@@ -148,7 +242,11 @@ export async function fetchEconomicCalendar({
 
   url.searchParams.set("c", apiKey);
   url.searchParams.set("f", "json");
-  url.searchParams.set("importance", minimumImpact === "high" ? "3" : "2");
+  if (minimumImpact === "high") {
+    url.searchParams.set("importance", "3");
+  } else if (minimumImpact === "medium") {
+    url.searchParams.set("importance", "2");
+  }
 
   const response = await fetch(url, {
     headers: {
@@ -170,10 +268,85 @@ export async function fetchEconomicCalendar({
     .map(mapCalendarEntry)
     .filter((event): event is NewsEvent => Boolean(event))
     .filter((event) => event.time.getTime() >= now)
-    .filter((event) => (minimumImpact === "high" ? event.impact === "high" : event.impact !== "low"))
+    .filter((event) => meetsMinimumImpact(event.impact, minimumImpact))
     .filter((event) => !currencies?.length || currencies.includes(event.currency))
     .sort((left, right) => left.time.getTime() - right.time.getTime())
     .slice(0, limit);
 
   return events;
+}
+
+export async function fetchFmpEconomicCalendar({
+  currencies,
+  from = new Date(),
+  to = addDays(from, 3),
+  limit = 20,
+  minimumImpact = "medium",
+}: FetchEconomicCalendarOptions = {}): Promise<NewsEvent[]> {
+  const apiKey =
+    process.env.FMP_API_KEY?.trim() ||
+    process.env.FINANCIAL_MODELING_PREP_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error("FMP_API_KEY is not configured.");
+  }
+
+  const endpoints = [
+    `${FMP_BASE_URL}/stable/economic-calendar`,
+    `${FMP_BASE_URL}/api/v3/economic_calendar`,
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const url = new URL(endpoint);
+      url.searchParams.set("apikey", apiKey);
+      url.searchParams.set("from", toDateParam(from));
+      url.searchParams.set("to", toDateParam(to));
+
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+        next: {
+          revalidate: 300,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`FMP calendar request failed with status ${response.status}.`);
+      }
+
+      const payload = (await response.json()) as FmpEconomicCalendarEntry[] | { economicCalendar?: FmpEconomicCalendarEntry[] };
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.economicCalendar)
+          ? payload.economicCalendar
+          : [];
+
+      const now = Date.now();
+
+      const events = rows
+        .map(mapFmpCalendarEntry)
+        .filter((event): event is NewsEvent => Boolean(event))
+        .filter((event) => event.time.getTime() >= now)
+        .filter((event) => meetsMinimumImpact(event.impact, minimumImpact))
+        .filter((event) => !currencies?.length || currencies.includes(event.currency))
+        .sort((left, right) => left.time.getTime() - right.time.getTime())
+        .slice(0, limit);
+
+      if (events.length > 0) {
+        return events;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unknown FMP calendar error.");
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return [];
 }
