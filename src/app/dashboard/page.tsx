@@ -15,7 +15,7 @@ import {
   SetupHeatmap,
   SessionClock,
 } from "@/components/dashboard";
-import { TradeManager } from "@/components/trade";
+import { MissedZonesPanel, TradeManager } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
 import { TRADING_CONFIG, getAccountRules } from "@/config/trading";
 import { useAccounts, useAuth, useTrackedPairs } from "@/hooks";
@@ -637,6 +637,8 @@ export default function DashboardPage() {
 
         <SessionClock />
       </div>
+
+      <MissedZonesPanel />
 
       {/* ── ROW 3: Market board (full width) ── */}
       <DashboardMarketBoard

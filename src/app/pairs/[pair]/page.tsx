@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { AnalysisDisplay, CandlestickChart, RiskCalculator } from "@/components/trade";
+import { AnalysisDisplay, CandlestickChart, MissedZonesPanel, RiskCalculator } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS, getAccountRules, getPricePrecision } from "@/config/trading";
 import { useAccounts, useAnalysis, useAuth } from "@/hooks";
@@ -1041,6 +1041,8 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 <InfoPanel title="Execution last" detail="Only record the trade after the setup is CONFIRMED and every denial check stays clear." />
               </div>
             </Card>
+
+            <MissedZonesPanel pair={pair} limit={3} />
 
             <PriceAlertCard pair={pair} currentPrice={marketSnapshot?.price} authFetch={authFetch} />
           </div>
