@@ -526,6 +526,31 @@ export default function DashboardPage() {
     [bestTrade, newsEvents, stats.disciplineScore, trades]
   );
 
+  const waitHints = useMemo(() => {
+    if (dashboardDecision.mode !== "wait") return [];
+
+    const topPairs = heatmap.slice(0, 3).map((item) => item.pair);
+    const hints: string[] = [];
+
+    if (bestTrade) {
+      hints.push(
+        `${bestTrade.pair}: ${bestTrade.direction.toLowerCase()} bias is closest — waiting for ${bestTrade.entryStatus === "CONFIRMED" ? "price alignment" : "CONFIRMED status"}.`
+      );
+    } else if (topPairs.length > 0) {
+      hints.push(`Check-in order: ${topPairs.join(", ")}.`);
+    } else if (trackedPairs.length > 0) {
+      hints.push(`Start with your tracked pairs: ${trackedPairs.slice(0, 3).join(", ")}.`);
+    }
+
+    if (upcomingHighImpact.length > 0) {
+      const nextEvent = upcomingHighImpact[0];
+      const mins = Math.max(0, Math.round((nextEvent.time.getTime() - Date.now()) / 60000));
+      hints.push(`Hold risk until ${nextEvent.currency} ${nextEvent.event} in ${mins}m.`);
+    }
+
+    return hints;
+  }, [bestTrade, dashboardDecision.mode, heatmap, trackedPairs, upcomingHighImpact]);
+
   return (
     <div className={cn("min-h-screen p-4 sm:p-6", density === "compact" ? "space-y-3" : "space-y-5")}>
 
@@ -611,7 +636,7 @@ export default function DashboardPage() {
             mode={dashboardDecision.mode}
             reason={dashboardDecision.reason}
             action={dashboardDecision.action}
-            details={dashboardDecision.details}
+            details={[...dashboardDecision.details, ...waitHints]}
             stickyMobile
           />
 
