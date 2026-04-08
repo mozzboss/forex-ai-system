@@ -37,6 +37,14 @@ export async function GET(req: NextRequest) {
       minimumImpact: impact,
     });
 
+    if (events.length === 0) {
+      return NextResponse.json({
+        events: getFallbackNewsEvents().slice(0, limit),
+        source: "fallback_empty",
+        fallback: true,
+      });
+    }
+
     return NextResponse.json({
       events,
       source: "tradingeconomics",
