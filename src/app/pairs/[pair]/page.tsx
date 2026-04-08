@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnalysisDisplay, CandlestickChart, MissedZonesPanel, RiskCalculator } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
@@ -195,6 +195,11 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const [autoCalcTick, setAutoCalcTick] = useState(0);
   const [checklistsByAccount, setChecklistsByAccount] = useState<Record<string, TradeChecklist>>({});
   const [timeTick, setTimeTick] = useState(() => Date.now());
+  const [readyPolling, setReadyPolling] = useState(false);
+  const [pollNextAt, setPollNextAt] = useState<number | null>(null);
+  const [pollCountdown, setPollCountdown] = useState<number | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const analysis = result?.analysis;
@@ -643,7 +648,30 @@ export default function PairPage({ params }: { params: { pair: string } }) {
 
   const chartMarkers = [...swingMarkers, ...eventMarkers];
 
-  const runAnalysis = async () => {
+  const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min — server cooldown is 3 min
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+    setReadyPolling(false);
+    setPollNextAt(null);
+    setPollCountdown(null);
+  }, []);
+
+  const scheduleNextPoll = useCallback((runFn: () => void) => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    const nextAt = Date.now() + POLL_INTERVAL_MS;
+    setPollNextAt(nextAt);
+    setPollCountdown(Math.round(POLL_INTERVAL_MS / 1000));
+    countdownRef.current = setInterval(() => {
+      setPollCountdown((c) => (c !== null && c > 0 ? c - 1 : 0));
+    }, 1000);
+    pollTimerRef.current = setTimeout(runFn, POLL_INTERVAL_MS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runAnalysis = useCallback(async () => {
     if (!pair || activeAccounts.length === 0) return;
     setFeedbackByAccount({});
     setChecklistsByAccount({});
@@ -651,7 +679,25 @@ export default function PairPage({ params }: { params: { pair: string } }) {
     if (analysisResult) {
       setActiveTab("analysis");
     }
-  };
+  }, [pair, activeAccounts, analyze, marketNotes]);
+
+  // Auto-poll when status is READY — re-check every 5 min until CONFIRMED or user stops
+  useEffect(() => {
+    const status = analysis?.entryStatus.status;
+    if (status === "READY" && readyPolling) {
+      scheduleNextPoll(() => runAnalysis());
+    } else if (status !== "READY") {
+      stopPolling();
+    }
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis?.entryStatus.status, readyPolling]);
+
+  // Stop polling when pair changes
+  useEffect(() => { stopPolling(); }, [params.pair, stopPolling]);
 
   const updateChecklist = (accountId: string, key: ChecklistKey, checked: boolean) => {
     setChecklistsByAccount((current) => ({
@@ -1032,7 +1078,42 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 <Button variant="ghost" onClick={clear} disabled={loading || !result} className="w-full sm:w-auto">
                   Clear
                 </Button>
+                {analysis?.entryStatus.status === "READY" && !readyPolling && !loading && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setReadyPolling(true); }}
+                    className="w-full sm:w-auto"
+                  >
+                    Watch for CONFIRMED
+                  </Button>
+                )}
               </div>
+
+              {/* READY auto-poll banner */}
+              {readyPolling && analysis?.entryStatus.status === "READY" && (
+                <div className="mt-4 flex items-center justify-between rounded-xl border border-yellow-500/25 bg-yellow-500/8 px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-yellow-400" />
+                    <div>
+                      <span className="text-xs font-semibold text-yellow-300">Watching for CONFIRMED</span>
+                      {pollCountdown !== null && (
+                        <span className="ml-2 text-xs text-yellow-500">
+                          — re-checking in {pollCountdown >= 60
+                            ? `${Math.floor(pollCountdown / 60)}m ${pollCountdown % 60}s`
+                            : `${pollCountdown}s`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopPolling}
+                    className="text-xs text-yellow-500 transition-colors hover:text-yellow-300"
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
 
               {loading ? (
                 <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-4">
