@@ -34,7 +34,7 @@ export function TradeDenialDisplay({ denials }: TradeDenialDisplayProps) {
         ))}
       </div>
       <p className="mt-3 text-[11px] text-gray-600">
-        Capital protection is priority #1. "No trade" is a valid outcome.
+        Capital protection is priority #1. &quot;No trade&quot; is a valid outcome.
       </p>
     </div>
   );

@@ -403,22 +403,6 @@ export default function PairPage({ params }: { params: { pair: string } }) {
       .catch(() => {});
   }, [pair, cachedAt, authFetch, restore]);
 
-  if (!pair) {
-    return (
-      <div className="p-6">
-        <Card className="max-w-2xl">
-          <CardHeader>Invalid Pair</CardHeader>
-          <p className="text-sm text-gray-400">
-            This symbol is not in the supported pair universe. Return to the pairs page and choose a valid pair.
-          </p>
-          <Link href="/pairs" className="mt-4 inline-flex text-sm text-brand-400 hover:text-brand-300">
-            Back to all pairs
-          </Link>
-        </Card>
-      </div>
-    );
-  }
-
   const primaryAccount = activeAccounts[0];
   const pairDecision = useMemo(
     () =>
@@ -660,12 +644,13 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   // Auto-run once on load when accounts are ready and no result/restore happened
   useEffect(() => {
     if (hasAutoRun.current) return;
+    if (!pair) return;
     if (accountsLoading || activeAccounts.length === 0) return;
     if (result || loading) return;
     hasAutoRun.current = true;
     runAnalysis();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountsLoading, activeAccounts.length, result, loading]);
+  }, [accountsLoading, activeAccounts.length, pair, result, loading]);
 
   const saveFeedback = (accountId: string, tone: FeedbackTone, message: string) => {
     setFeedbackByAccount((current) => ({
@@ -785,6 +770,22 @@ export default function PairPage({ params }: { params: { pair: string } }) {
       setActiveActionId(null);
     }
   };
+
+  if (!pair) {
+    return (
+      <div className="p-6">
+        <Card className="max-w-2xl">
+          <CardHeader>Invalid Pair</CardHeader>
+          <p className="text-sm text-gray-400">
+            This symbol is not in the supported pair universe. Return to the pairs page and choose a valid pair.
+          </p>
+          <Link href="/pairs" className="mt-4 inline-flex text-sm text-brand-400 hover:text-brand-300">
+            Back to all pairs
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -1512,7 +1513,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 </div>
                 <h2 className="mt-3 text-2xl font-bold text-white">No analysis loaded yet</h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  Run the pair workflow when you are calm, the session makes sense, and you are ready to accept "no trade" as a valid answer.
+                  Run the pair workflow when you are calm, the session makes sense, and you are ready to accept &quot;no trade&quot; as a valid answer.
                 </p>
 
                 <div className="mt-5 grid gap-3 md:grid-cols-3">

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, CardHeader, EntryStatusCard, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS } from "@/config/trading";
 import { useAuth } from "@/hooks";
-import { cn, getBiasColor, formatCurrency } from "@/lib/utils";
+import { cn, getBiasColor } from "@/lib/utils";
 import type { CurrencyPair, NewsAnalysisResult, NewsEvent } from "@/types";
 
 function formatPrice(value: number) {
