@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ snapshot: null });
   }
   try {
-    await requireAppUserId(req);
+    // Allow internal cron calls (from alerts/check) without user auth
+    const isInternalCron = req.headers.get("x-internal-cron") === "1";
+    if (!isInternalCron) await requireAppUserId(req);
     const { searchParams } = new URL(req.url);
     const rawPair = searchParams.get("pair")?.toUpperCase();
     const rawTimeframe = searchParams.get("timeframe");

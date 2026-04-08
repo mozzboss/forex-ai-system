@@ -10,14 +10,9 @@ export const runtime = "nodejs";
 
 function isCronAuthorized(req: NextRequest) {
   const secret = process.env.CRON_SECRET?.trim();
-  const authorization = req.headers.get("authorization");
-
-  if (!secret) {
-    // Keep local/dev friendly; in production, require explicit CRON_SECRET.
-    return process.env.VERCEL_ENV !== "production";
-  }
-
-  return authorization === `Bearer ${secret}`;
+  // If no secret is configured, allow all calls (set CRON_SECRET in Vercel env to restrict)
+  if (!secret) return true;
+  return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 // Called by Vercel Cron every 5 minutes.
@@ -28,10 +23,6 @@ export async function GET(req: NextRequest) {
       { error: "Unauthorized cron request. Configure CRON_SECRET and send it as Bearer token." },
       { status: 401 }
     );
-  }
-
-  if (!process.env.TWELVE_DATA_API_KEY) {
-    return NextResponse.json({ skipped: true, reason: "No TwelveData key" });
   }
 
   try {
@@ -48,28 +39,58 @@ export async function GET(req: NextRequest) {
     // Collect unique pairs
     const pairs = [...new Set(alerts.map((a) => a.pair))] as CurrencyPair[];
 
-    // Batch fetch prices from TwelveData — one request for all pairs
-    const symbols = pairs.map((p) => `${p.slice(0, 3)}/${p.slice(3, 6)}`).join(",");
-    const url = new URL("https://api.twelvedata.com/price");
-    url.searchParams.set("symbol", symbols);
-    url.searchParams.set("apikey", process.env.TWELVE_DATA_API_KEY!);
-
-    const res = await fetch(url.toString(), { next: { revalidate: 0 } });
-    if (!res.ok) {
-      return NextResponse.json({ error: "TwelveData fetch failed" }, { status: 502 });
-    }
-
-    const data = await res.json() as Record<string, { price?: string; code?: number }>;
-
     // Build price map: pair → current price
     const priceMap = new Map<string, number>();
-    for (const pair of pairs) {
-      const symbol = `${pair.slice(0, 3)}/${pair.slice(3, 6)}`;
-      // TwelveData returns the key as "EUR/USD" when multiple symbols
-      const entry = data[symbol] ?? data;
-      const raw = typeof entry === "object" && "price" in entry ? (entry as { price?: string }).price : undefined;
-      const price = raw ? Number(raw) : NaN;
-      if (isFinite(price)) priceMap.set(pair, price);
+
+    const apiKey = process.env.TWELVE_DATA_API_KEY?.trim();
+    if (apiKey) {
+      // Batch fetch from TwelveData — one request for all pairs
+      const symbols = pairs.map((p) => `${p.slice(0, 3)}/${p.slice(3, 6)}`).join(",");
+      const url = new URL("https://api.twelvedata.com/price");
+      url.searchParams.set("symbol", symbols);
+      url.searchParams.set("apikey", apiKey);
+
+      try {
+        const res = await fetch(url.toString(), { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json() as Record<string, unknown>;
+          for (const pair of pairs) {
+            const symbol = `${pair.slice(0, 3)}/${pair.slice(3, 6)}`;
+            // Single-symbol: TwelveData returns { price: "..." } directly (not keyed)
+            // Multi-symbol: returns { "EUR/USD": { price: "..." }, ... }
+            const entry = (pairs.length === 1 ? data : (data[symbol] ?? {})) as Record<string, unknown>;
+            const raw = typeof entry.price === "string" ? entry.price : null;
+            const price = raw ? Number(raw) : NaN;
+            if (isFinite(price) && price > 0) priceMap.set(pair, price);
+          }
+        }
+      } catch (fetchErr) {
+        console.error("TwelveData price fetch failed:", fetchErr);
+      }
+    }
+
+    // For any pair still missing a price, try the internal market snapshot
+    const missingPairs = pairs.filter((p) => !priceMap.has(p));
+    if (missingPairs.length > 0) {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
+      await Promise.allSettled(
+        missingPairs.map(async (pair) => {
+          try {
+            const res = await fetch(`${baseUrl}/api/market?pair=${pair}&timeframe=1min`, {
+              cache: "no-store",
+              headers: { "x-internal-cron": "1" },
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const price = data?.snapshot?.price;
+            if (typeof price === "number" && isFinite(price) && price > 0) {
+              priceMap.set(pair, price);
+            }
+          } catch { /* skip */ }
+        })
+      );
     }
 
     let triggered = 0;
