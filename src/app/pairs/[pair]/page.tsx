@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AnalysisDisplay, CandlestickChart, MissedZonesPanel, RiskCalculator } from "@/components/trade";
 import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/components/ui";
@@ -142,7 +142,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const { authFetch } = useAuth();
   const pair = useMemo(() => getPairFromParam(params.pair), [params.pair]);
   const { accounts, loading: accountsLoading, error: accountsError, refetch } = useAccounts();
-  const { result, loading, error, cachedAt, analyze, restore, clear } = useAnalysis();
+  const { result, loading, error, cachedAt, analyze, clear } = useAnalysis();
   const [marketNotes, setMarketNotes] = useState("");
   const [executionPrice, setExecutionPrice] = useState("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -171,9 +171,6 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   }>({});
   const [riskNote, setRiskNote] = useState<string | null>(null);
   const [autoCalcTick, setAutoCalcTick] = useState(0);
-  const [restoredFromHistory, setRestoredFromHistory] = useState(false);
-  const hasAttemptedRestore = useRef(false);
-  const hasAutoRun = useRef(false);
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const analysis = result?.analysis;
@@ -196,9 +193,6 @@ export default function PairPage({ params }: { params: { pair: string } }) {
     setMarketEvents([]);
     setMarketError(null);
     setActiveTab("market");
-    setRestoredFromHistory(false);
-    hasAttemptedRestore.current = false;
-    hasAutoRun.current = false;
   }, [clear, params.pair]);
 
   useEffect(() => {
@@ -381,27 +375,9 @@ export default function PairPage({ params }: { params: { pair: string } }) {
           result: e.result as FullAnalysis,
         }));
         setAnalysisHistory(parsed);
-
-        // On first load: restore last CONFIRMED analysis if within 2 hours
-        if (!hasAttemptedRestore.current && parsed.length > 0) {
-          hasAttemptedRestore.current = true;
-          const latest = parsed[0];
-          const ageMs = Date.now() - latest.createdAt.getTime();
-          const r = latest.result as FullAnalysis & { entryStatus?: { status?: string }; finalDecision?: { decision?: string } };
-          if (
-            ageMs < 2 * 60 * 60 * 1000 &&
-            r?.entryStatus?.status === "CONFIRMED" &&
-            r?.finalDecision?.decision === "TAKE_TRADE"
-          ) {
-            restore(pair, { analysis: r, denialResults: {}, decisionSignal: undefined }, latest.createdAt.getTime());
-            setRestoredFromHistory(true);
-            hasAutoRun.current = true; // skip auto-run since we have a good result
-            setActiveTab("analysis");
-          }
-        }
       })
       .catch(() => {});
-  }, [pair, cachedAt, authFetch, restore]);
+  }, [pair, cachedAt, authFetch]);
 
   const primaryAccount = activeAccounts[0];
   const pairDecision = useMemo(
@@ -634,23 +610,11 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const runAnalysis = async () => {
     if (!pair || activeAccounts.length === 0) return;
     setFeedbackByAccount({});
-    setRestoredFromHistory(false);
     const analysisResult = await analyze(pair, activeAccounts, marketNotes.trim() || undefined);
     if (analysisResult) {
       setActiveTab("analysis");
     }
   };
-
-  // Auto-run once on load when accounts are ready and no result/restore happened
-  useEffect(() => {
-    if (hasAutoRun.current) return;
-    if (!pair) return;
-    if (accountsLoading || activeAccounts.length === 0) return;
-    if (result || loading) return;
-    hasAutoRun.current = true;
-    runAnalysis();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountsLoading, activeAccounts.length, pair, result, loading]);
 
   const saveFeedback = (accountId: string, tone: FeedbackTone, message: string) => {
     setFeedbackByAccount((current) => ({
@@ -833,22 +797,6 @@ export default function PairPage({ params }: { params: { pair: string } }) {
         details={pairDecision.details}
         stickyMobile
       />
-
-      {restoredFromHistory && cachedAt ? (
-        <div className="flex items-center justify-between rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-          <span className="text-xs text-yellow-300">
-            Last CONFIRMED analysis restored from {Math.round((Date.now() - cachedAt) / 60_000)}m ago — conditions may have changed.
-          </span>
-          <button
-            type="button"
-            onClick={runAnalysis}
-            disabled={loading}
-            className="ml-4 shrink-0 text-xs font-semibold text-yellow-200 underline underline-offset-2 hover:text-white disabled:opacity-50"
-          >
-            Re-run
-          </button>
-        </div>
-      ) : null}
 
       {analysis ? (
         <div className="grid gap-3 lg:grid-cols-4">
