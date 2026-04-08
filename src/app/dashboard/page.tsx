@@ -531,9 +531,14 @@ export default function DashboardPage() {
 
       {/* ── ROW 1: Header bar ── */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex MB</div>
-          <h1 className="mt-1 text-xl font-bold tracking-tight text-white sm:text-2xl">Trading Dashboard</h1>
+        <div className="space-y-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">Forex AI System</div>
+          <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Trading Dashboard</h1>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+            <span className={cn("h-2 w-2 rounded-full", session.tone.replace("text-", "bg-"))} />
+            <span className="font-semibold tracking-wide">{session.label}</span>
+            <span className="text-[11px] text-slate-500">{session.detail}</span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="flex rounded-lg border border-white/10 bg-white/5 p-1 text-xs text-gray-400">
@@ -645,15 +650,20 @@ export default function DashboardPage() {
       <MissedZonesPanel />
 
       {/* ── ROW 3: Market board (full width) ── */}
-      <DashboardMarketBoard
-        snapshots={marketSnapshots}
-        events={newsEvents}
-        loading={refreshing}
-        error={marketError}
-        highlightedPair={bestTrade?.pair || null}
-        timeframe={marketTimeframe}
-        onTimeframeChange={setMarketTimeframe}
-      />
+      <div className="relative">
+        {refreshing ? (
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl border border-white/5 bg-surface/60 backdrop-blur-sm" />
+        ) : null}
+        <DashboardMarketBoard
+          snapshots={marketSnapshots}
+          events={newsEvents}
+          loading={refreshing}
+          error={marketError}
+          highlightedPair={bestTrade?.pair || null}
+          timeframe={marketTimeframe}
+          onTimeframeChange={setMarketTimeframe}
+        />
+      </div>
 
       {/* ── ROW 4: Heatmap + News countdown ── */}
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
@@ -764,41 +774,52 @@ export default function DashboardPage() {
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>Best Trade on the Board</CardHeader>
-            {bestTrade ? (
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-lg font-bold text-white">{bestTrade.pair}</div>
-                    <div className={cn("text-sm font-medium", getBiasColor(bestTrade.direction === "LONG" ? "bullish" : "bearish"))}>
-                      {bestTrade.direction} · {bestTrade.setupType.replace("_", " ")}
-                    </div>
-                  </div>
-                  <div className="rounded-xl bg-white/5 px-3 py-2 text-center">
-                    <div className="text-[10px] text-gray-500">Score</div>
-                    <div className="text-lg font-bold text-white">{bestTrade.aiScore}/10</div>
+        <Card>
+          <CardHeader>Best Trade on the Board</CardHeader>
+          {bestTrade ? (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-lg font-bold text-white">{bestTrade.pair}</div>
+                  <div className={cn("text-sm font-medium", getBiasColor(bestTrade.direction === "LONG" ? "bullish" : "bearish"))}>
+                    {bestTrade.direction} · {bestTrade.setupType.replace("_", " ")}
                   </div>
                 </div>
-                <StatusBadge status={bestTrade.entryStatus} size="sm" showAction />
-                <p className="text-sm leading-6 text-gray-400">
-                  {bestTrade.aiReasoning || "Re-run analysis for updated reasoning."}
-                </p>
-                <Link href={`/pairs/${bestTrade.pair}`} className="inline-block text-sm text-brand-400 hover:text-brand-300">
+                <div className="rounded-xl bg-white/5 px-3 py-2 text-center">
+                  <div className="text-[10px] text-gray-500">Score</div>
+                  <div className="text-lg font-bold text-white">{bestTrade.aiScore}/10</div>
+                </div>
+              </div>
+              <StatusBadge status={bestTrade.entryStatus} size="sm" showAction />
+              <p className="text-sm leading-6 text-gray-400">
+                {bestTrade.aiReasoning || "Re-run analysis for updated reasoning."}
+              </p>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Link href={`/pairs/${bestTrade.pair}`} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-brand-300 hover:text-brand-200">
                   Open workspace →
                 </Link>
+                <Button variant="secondary" size="sm" onClick={refreshAll}>
+                  Refresh AI
+                </Button>
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
-                No trades on the board yet. Run pair analysis to surface setups.
-              </div>
-            )}
-          </Card>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
+              No trades on the board yet. Run pair analysis to surface setups.
+            </div>
+          )}
+        </Card>
 
-          <Card>
-            <CardHeader>Active Setups</CardHeader>
+        <Card>
+          <CardHeader>Active Setups</CardHeader>
+          {activeSetups.length > 0 ? (
             <ActiveSetups setups={activeSetups} />
-          </Card>
+          ) : (
+            <div className="rounded-xl border border-dashed border-white/10 bg-surface/60 px-4 py-5 text-sm text-slate-500">
+              No active setups. Run analysis on your tracked pairs to populate this panel.
+            </div>
+          )}
+        </Card>
         </div>
       </div>
 
