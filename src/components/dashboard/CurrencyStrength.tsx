@@ -12,6 +12,28 @@ export function CurrencyStrength({ data }: CurrencyStrengthProps) {
   const sorted = CURRENCIES
     .map((c) => ({ currency: c, strength: data[c] || 0 }))
     .sort((a, b) => b.strength - a.strength);
+  const hasExposure = sorted.some((item) => item.strength !== 0);
+
+  if (!hasExposure) {
+    return (
+      <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-4">
+        <div className="text-sm text-slate-400">No open or pending exposure yet.</div>
+        <p className="mt-1 text-xs text-slate-500">
+          Currency tilt will populate automatically after you log live trades.
+        </p>
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {CURRENCIES.map((currency) => (
+            <div
+              key={currency}
+              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-center text-[11px] text-slate-400"
+            >
+              {currency}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
