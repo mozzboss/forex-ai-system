@@ -62,7 +62,14 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
 
   if (/ANTHROPIC_API_KEY is not set/i.test(rawMessage)) {
     return {
-      message: "ANTHROPIC_API_KEY is missing. Add it to Vercel environment variables and redeploy.",
+      message: "No AI provider key is configured. Add ANTHROPIC_API_KEY or OPENAI_API_KEY in environment variables and redeploy.",
+      status: 503,
+    };
+  }
+
+  if (/OPENAI_API_KEY is not set|No AI provider succeeded/i.test(rawMessage)) {
+    return {
+      message: "AI providers are not configured. Add ANTHROPIC_API_KEY and/or OPENAI_API_KEY in environment variables.",
       status: 503,
     };
   }
@@ -76,14 +83,14 @@ function getAnalysisErrorDetails(error: unknown): { message: string; status: num
 
   if (/invalid.?x?-?api.?key|invalid api key|authentication_error|Could not resolve authentication/i.test(rawMessage)) {
     return {
-      message: "Anthropic API authentication failed. Check ANTHROPIC_API_KEY in Vercel environment variables.",
+      message: "AI provider authentication failed. Check ANTHROPIC_API_KEY and OPENAI_API_KEY in environment variables.",
       status: 401,
     };
   }
 
   if (/rate.?limit|too.?many.?requests/i.test(rawMessage)) {
     return {
-      message: "Anthropic rate limit reached. Wait a moment, then run pair analysis again.",
+      message: "AI provider rate limit reached. Wait a moment, then run pair analysis again.",
       status: 429,
     };
   }

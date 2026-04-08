@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 import type {
   EndOfDayReview,
   EndOfDayReviewContext,
@@ -7,8 +5,7 @@ import type {
   JournalEntry,
   Trade,
 } from "@/types";
-
-const REVIEW_MODEL = "claude-sonnet-4-6";
+import { generateAiText } from "@/lib/ai/providers";
 
 function roundToCents(value: number) {
   return Math.round(value * 100) / 100;
@@ -188,13 +185,6 @@ export async function generateEndOfDayReview(
   context: EndOfDayReviewContext
 ): Promise<EndOfDayReview> {
   const fallback = buildFallbackReview(context);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    return fallback;
-  }
-
-  const anthropic = new Anthropic({ apiKey });
   const prompt = [
     "You are reviewing a disciplined forex trading day.",
     "Your job is not to hype the trader. Your job is to protect future capital by identifying what was done well, what behavior was risky, and what tomorrow should look like.",
@@ -224,18 +214,13 @@ export async function generateEndOfDayReview(
   ].join("\n");
 
   try {
-    const response = await anthropic.messages.create({
-      model: REVIEW_MODEL,
-      max_tokens: 1600,
-      system:
+    const { text } = await generateAiText({
+      systemPrompt:
         "You are a disciplined trading performance reviewer. Be direct, calm, and practical. Output JSON only.",
-      messages: [{ role: "user", content: prompt }],
+      userPrompt: prompt,
+      maxTokens: 1600,
+      temperature: 0.2,
     });
-
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("");
     const cleaned = text.replace(/```json?|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 

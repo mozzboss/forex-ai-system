@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 import { ALL_PAIRS, MAJOR_PAIRS, TRADING_CONFIG } from "@/config/trading";
 import type {
   CurrencyPair,
@@ -7,8 +5,7 @@ import type {
   GeneratedDailyPlan,
   NewsEvent,
 } from "@/types";
-
-const PLAN_MODEL = "claude-sonnet-4-6";
+import { generateAiText } from "@/lib/ai/providers";
 
 function uniquePairs(pairs: CurrencyPair[]) {
   return Array.from(new Set(pairs));
@@ -160,13 +157,6 @@ function coercePlanShape(candidate: unknown, fallback: GeneratedDailyPlan): Gene
 
 export async function generateDailyPlan(context: DailyPlanContext): Promise<GeneratedDailyPlan> {
   const fallback = buildFallbackPlan(context);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    return fallback;
-  }
-
-  const anthropic = new Anthropic({ apiKey });
   const prompt = [
     "You are writing a disciplined forex morning plan.",
     "This is not a hype memo and not a signal sheet.",
@@ -198,18 +188,13 @@ export async function generateDailyPlan(context: DailyPlanContext): Promise<Gene
   ].join("\n");
 
   try {
-    const response = await anthropic.messages.create({
-      model: PLAN_MODEL,
-      max_tokens: 1200,
-      system:
+    const { text } = await generateAiText({
+      systemPrompt:
         "You are a disciplined trading planner. Be practical, selective, and conservative. Output JSON only.",
-      messages: [{ role: "user", content: prompt }],
+      userPrompt: prompt,
+      maxTokens: 1200,
+      temperature: 0.2,
     });
-
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("");
     const cleaned = text.replace(/```json?|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 

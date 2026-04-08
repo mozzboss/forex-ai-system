@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 import { ALL_PAIRS } from "@/config/trading";
 import type {
   Bias,
@@ -9,6 +7,7 @@ import type {
   NewsAnalysisResult,
   TradeDirection,
 } from "@/types";
+import { generateAiText } from "@/lib/ai/providers";
 
 export interface NewsAnalysisInput {
   headline: string;
@@ -229,23 +228,13 @@ function buildFallbackResult(input: NewsAnalysisInput): NewsAnalysisResult {
 }
 
 export async function analyzeNews(input: NewsAnalysisInput): Promise<NewsAnalysisResult> {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
-
-  const anthropic = new Anthropic({ apiKey: key });
-
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: NEWS_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildNewsPrompt(input) }],
+    const { text } = await generateAiText({
+      systemPrompt: NEWS_SYSTEM_PROMPT,
+      userPrompt: buildNewsPrompt(input),
+      maxTokens: 2048,
+      temperature: 0.2,
     });
-
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
 
     const cleaned = text.replace(/```json?|```/g, "").trim();
     return coerceNewsAnalysisResult(JSON.parse(cleaned), input);

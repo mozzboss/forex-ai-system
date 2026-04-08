@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import {
   CurrencyPair,
   FullAnalysis,
@@ -8,21 +7,14 @@ import {
 import { calculateRisk, validateTradeAgainstAccount } from "@/lib/risk/engine";
 import { TRADING_CONFIG } from "@/config/trading";
 import { prisma } from "@/lib/prisma";
+import { generateAiText } from "@/lib/ai/providers";
 
 const CACHE_TTL_MINUTES = 15;
 
 // ============================================================
 // AI DECISION ENGINE
-// Uses Claude to analyze markets and make disciplined decisions.
+// Uses hybrid provider routing (Claude + ChatGPT fallback).
 // ============================================================
-
-function getAnthropicClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error("ANTHROPIC_API_KEY is not set");
-  }
-  return new Anthropic({ apiKey: key });
-}
 
 const SYSTEM_PROMPT = `You are a senior Forex trading analyst applying institutional-grade discipline. Your job is to analyze a currency pair and produce a structured, honest decision — not to find a trade.
 
@@ -80,7 +72,7 @@ async function saveAnalysisToCache(pair: CurrencyPair, text: string): Promise<vo
 
 /**
  * Run full analysis on a currency pair.
- * Checks AnalysisCache first (15-min TTL) before calling Claude.
+ * Checks AnalysisCache first (15-min TTL) before calling the configured AI provider chain.
  */
 export async function analyzeMarket(
   pair: CurrencyPair,
@@ -95,18 +87,12 @@ export async function analyzeMarket(
 
   const prompt = buildAnalysisPrompt(pair, accounts, marketData);
 
-  const anthropic = getAnthropicClient();
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: prompt }],
+  const { text } = await generateAiText({
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt: prompt,
+    maxTokens: 4096,
+    temperature: 0.2,
   });
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 
   // Save to cache (non-blocking)
   void saveAnalysisToCache(pair, text);
@@ -120,23 +106,12 @@ export async function analyzeMarket(
 export async function quickPairCheck(
   pair: CurrencyPair
 ): Promise<{ bias: string; score: number; summary: string }> {
-  const anthropic = getAnthropicClient();
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Quick analysis of ${pair}. Consider macro bias, price structure, and current session. Be honest — most pairs score below 7 right now.\n\nRespond in JSON only: { "bias": "bullish|bearish|neutral", "score": 1-10, "summary": "1-2 sentences covering bias, key level, and whether it is worth watching now" }`,
-      },
-    ],
+  const { text } = await generateAiText({
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt: `Quick analysis of ${pair}. Consider macro bias, price structure, and current session. Be honest - most pairs score below 7 right now.\n\nRespond in JSON only: { "bias": "bullish|bearish|neutral", "score": 1-10, "summary": "1-2 sentences covering bias, key level, and whether it is worth watching now" }`,
+    maxTokens: 1024,
+    temperature: 0.2,
   });
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 
   try {
     return JSON.parse(text.replace(/```json?|```/g, "").trim());
@@ -144,7 +119,6 @@ export async function quickPairCheck(
     return { bias: "neutral", score: 5, summary: "Unable to parse analysis." };
   }
 }
-
 // --- Prompt Builder ---
 
 function buildAnalysisPrompt(
