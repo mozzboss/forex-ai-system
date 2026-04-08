@@ -17,8 +17,18 @@ export const runtime = "nodejs";
 // Stored in process memory; clears on restart (intentional — restarts are rare, sessions are not).
 const ANALYSIS_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutes
 const READY_ALERT_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes — prevents spam on slow-forming setups
+const COOLDOWN_MAP_MAX = 5000; // prune when map grows beyond this
+const COOLDOWN_PRUNE_AGE_MS = 24 * 60 * 60 * 1000; // drop entries older than 24h
 const analysisCooldowns = new Map<string, number>();
 const readyAlertCooldowns = new Map<string, number>();
+
+function pruneMap(map: Map<string, number>) {
+  if (map.size < COOLDOWN_MAP_MAX) return;
+  const cutoff = Date.now() - COOLDOWN_PRUNE_AGE_MS;
+  for (const [k, v] of map) {
+    if (v < cutoff) map.delete(k);
+  }
+}
 
 function checkAnalysisCooldown(userId: string, pair: string): { blocked: boolean; retryAfterSecs: number } {
   const key = `${userId}:${pair}`;
@@ -30,6 +40,7 @@ function checkAnalysisCooldown(userId: string, pair: string): { blocked: boolean
 }
 
 function recordAnalysisRun(userId: string, pair: string) {
+  pruneMap(analysisCooldowns);
   analysisCooldowns.set(`${userId}:${pair}`, Date.now());
 }
 
@@ -241,6 +252,7 @@ export async function POST(req: NextRequest) {
               telegramChatId,
               formatReadyAlert(pair, decisionSignal, analysis.entryStatus.whatMustHappenNext)
             );
+            pruneMap(readyAlertCooldowns);
             readyAlertCooldowns.set(readyKey, Date.now());
           } catch (readyAlertError) {
             console.error("Ready alert failed:", readyAlertError);

@@ -40,8 +40,7 @@ export function useMissedZones(pair?: string, limit = 10) {
 
   useEffect(() => {
     fetchZones();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchZones]);
 
   return { zones, loading, error, refetch: fetchZones };
 }

@@ -24,24 +24,33 @@ interface MissedZonesPanelProps {
 }
 
 export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
-  const { zones, loading } = useMissedZones(pair, limit);
+  const { zones, loading, error } = useMissedZones(pair, limit);
 
   if (loading) return null;
+
+  if (error) {
+    return (
+      <Card className="border-red-500/20 bg-red-500/5">
+        <CardHeader>Missed Confirmed Zones</CardHeader>
+        <p className="text-sm text-red-400">{error}</p>
+      </Card>
+    );
+  }
+
   if (zones.length === 0) return null;
 
   return (
-    <Card className="border-amber-500/20 bg-amber-500/5">
+    <Card className="border-amber-500/25 bg-amber-500/10">
       <CardHeader>Missed Confirmed Zones</CardHeader>
       <p className="mb-4 text-sm text-slate-400">
-        These setups reached CONFIRMED status but no trade was logged within the 2-hour window.
-        Review whether conditions have changed before deciding to act.
+        CONFIRMED setups with no trade logged within 2 hours. Review conditions before acting.
       </p>
 
       <div className="space-y-3">
         {zones.map((zone) => (
           <div
             key={zone.analysisId}
-            className="rounded-xl border border-amber-500/15 bg-surface p-4"
+            className="rounded-xl border border-amber-500/20 bg-surface p-4"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -63,14 +72,14 @@ export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
                   </span>
                 ) : null}
                 {zone.setupType ? (
-                  <span className="rounded px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-slate-400 bg-slate-800">
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-slate-400">
                     {zone.setupType.replace(/_/g, " ")}
                   </span>
                 ) : null}
               </div>
 
               <div className="flex items-center gap-3">
-                {zone.aiScore ? (
+                {zone.aiScore != null ? (
                   <span className="text-xs text-slate-500">{zone.aiScore}/10</span>
                 ) : null}
                 <span className="text-xs text-amber-500/70">{formatRelativeTime(zone.missedAt)}</span>
@@ -85,12 +94,12 @@ export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
                     {formatPrice(zone.entryZone.low)} – {formatPrice(zone.entryZone.high)}
                   </span>
                 </span>
-                {zone.stopLoss ? (
+                {zone.stopLoss != null ? (
                   <span>
                     SL <span className="font-medium text-red-400">{formatPrice(zone.stopLoss)}</span>
                   </span>
                 ) : null}
-                {zone.takeProfit ? (
+                {zone.takeProfit != null ? (
                   <span>
                     TP <span className="font-medium text-green-400">{formatPrice(zone.takeProfit)}</span>
                   </span>
@@ -98,9 +107,17 @@ export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
               </div>
             ) : null}
 
-            <p className="mt-2 text-xs leading-5 text-slate-400 line-clamp-2">
+            <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">
               {zone.confirmationReason}
             </p>
+            {zone.confirmationReason.length > 120 ? (
+              <Link
+                href={`/pairs/${zone.pair}`}
+                className="mt-0.5 text-[11px] text-slate-600 hover:text-slate-400"
+              >
+                more
+              </Link>
+            ) : null}
 
             <div className="mt-3">
               <Link
@@ -114,8 +131,8 @@ export function MissedZonesPanel({ pair, limit = 10 }: MissedZonesPanelProps) {
         ))}
       </div>
 
-      <p className="mt-4 text-[11px] text-slate-600">
-        Missed zones are logged when CONFIRMED analysis had no trade within 2 hours. Past 30 min grace period only.
+      <p className="mt-4 text-xs text-slate-600">
+        Only shows setups confirmed more than 30 min ago with no trade logged within 2 hours.
       </p>
     </Card>
   );

@@ -146,7 +146,7 @@ export function SessionClock() {
           ? "border-blue-500/30 bg-blue-500/10"
           : isAsia
           ? "border-yellow-500/30 bg-yellow-500/10"
-          : "border-slate-500/20 bg-slate-500/5"
+          : "border-slate-500/30 bg-slate-500/10"
       )}>
         <div className="flex items-center gap-2">
           <span className={cn(
@@ -194,7 +194,7 @@ export function SessionClock() {
           const current = utcMinutes(now);
           const start = sessionMinutes(session.start);
           const end = sessionMinutes(session.end);
-          const progress = active ? ((current - start) / (end - start)) * 100 : 0;
+          const progress = active ? Math.min(100, ((current - start) / (end - start)) * 100) : 0;
 
           return (
             <div key={session.name} className="space-y-1">

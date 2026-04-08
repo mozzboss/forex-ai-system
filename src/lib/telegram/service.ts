@@ -369,7 +369,7 @@ export function formatReadyAlert(
       [truncateTelegramText(whatMustHappenNext, 140)]
     ),
     buildTelegramSection("Do now", [
-      "Prepare your levels. Entry is NOT valid yet — wait for CONFIRMED before executing.",
+      "Prepare levels. Wait for CONFIRMED status before entry.",
     ]),
   ];
 
@@ -394,9 +394,9 @@ export function formatMissedZoneAlert(
     : "See analysis";
 
   const metrics: Array<[string, string]> = [["Zone", zoneStr]];
-  if (zone.stopLoss) metrics.push(["SL", formatPrice(zone.stopLoss)]);
-  if (zone.takeProfit) metrics.push(["TP", formatPrice(zone.takeProfit)]);
-  if (zone.aiScore) metrics.push(["Score", `${zone.aiScore}/10`]);
+  if (zone.stopLoss != null) metrics.push(["SL", formatPrice(zone.stopLoss)]);
+  if (zone.takeProfit != null) metrics.push(["TP", formatPrice(zone.takeProfit)]);
+  if (zone.aiScore != null) metrics.push(["Score", `${zone.aiScore}/10`]);
 
   const directionStr = [zone.direction, zone.setupType].filter(Boolean).join(" ").toUpperCase();
 
@@ -410,7 +410,7 @@ export function formatMissedZoneAlert(
       extractTelegramPoints(zone.confirmationReason, 2, 120)
     ),
     buildTelegramSection("Do now", [
-      "Review the chart. If conditions are still valid, re-run analysis. If not, log as a missed opportunity.",
+      "If conditions persist, re-run analysis. Otherwise log the miss in your journal.",
     ]),
   ];
 
