@@ -8,9 +8,27 @@ import type { CurrencyPair } from "@/types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function isCronAuthorized(req: NextRequest) {
+  const secret = process.env.CRON_SECRET?.trim();
+  const authorization = req.headers.get("authorization");
+
+  if (!secret) {
+    // Keep local/dev friendly; in production, require explicit CRON_SECRET.
+    return process.env.VERCEL_ENV !== "production";
+  }
+
+  return authorization === `Bearer ${secret}`;
+}
+
 // Called by Vercel Cron every 5 minutes.
 // Also callable manually: GET /api/alerts/check
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
+  if (!isCronAuthorized(req)) {
+    return NextResponse.json(
+      { error: "Unauthorized cron request. Configure CRON_SECRET and send it as Bearer token." },
+      { status: 401 }
+    );
+  }
 
   if (!process.env.TWELVE_DATA_API_KEY) {
     return NextResponse.json({ skipped: true, reason: "No TwelveData key" });
