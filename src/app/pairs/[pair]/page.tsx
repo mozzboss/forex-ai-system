@@ -196,10 +196,11 @@ export default function PairPage({ params }: { params: { pair: string } }) {
   const [checklistsByAccount, setChecklistsByAccount] = useState<Record<string, TradeChecklist>>({});
   const [timeTick, setTimeTick] = useState(() => Date.now());
   const [readyPolling, setReadyPolling] = useState(false);
-  const [pollNextAt, setPollNextAt] = useState<number | null>(null);
   const [pollCountdown, setPollCountdown] = useState<number | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const readyPollingRef = useRef(false);
+  const runAnalysisRef = useRef<(() => Promise<void>) | null>(null);
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const analysis = result?.analysis;
@@ -648,26 +649,31 @@ export default function PairPage({ params }: { params: { pair: string } }) {
 
   const chartMarkers = [...swingMarkers, ...eventMarkers];
 
-  const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min — server cooldown is 3 min
+  const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 min — above 3-min server cooldown
 
   const stopPolling = useCallback(() => {
+    readyPollingRef.current = false;
+    setReadyPolling(false);
+    setPollCountdown(null);
     if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
     if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
-    setReadyPolling(false);
-    setPollNextAt(null);
-    setPollCountdown(null);
   }, []);
 
-  const scheduleNextPoll = useCallback((runFn: () => void) => {
+  // Self-rescheduling poll cycle — uses refs so the closure is never stale
+  const startPollCycle = useCallback(() => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
-    const nextAt = Date.now() + POLL_INTERVAL_MS;
-    setPollNextAt(nextAt);
-    setPollCountdown(Math.round(POLL_INTERVAL_MS / 1000));
+    const totalSecs = Math.round(POLL_INTERVAL_MS / 1000);
+    setPollCountdown(totalSecs);
     countdownRef.current = setInterval(() => {
-      setPollCountdown((c) => (c !== null && c > 0 ? c - 1 : 0));
+      setPollCountdown((c) => (c !== null && c > 1 ? c - 1 : 0));
     }, 1000);
-    pollTimerRef.current = setTimeout(runFn, POLL_INTERVAL_MS);
+    pollTimerRef.current = setTimeout(async () => {
+      if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+      if (!readyPollingRef.current || !runAnalysisRef.current) return;
+      await runAnalysisRef.current();
+      if (readyPollingRef.current) startPollCycle(); // reschedule if still watching
+    }, POLL_INTERVAL_MS);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -681,22 +687,16 @@ export default function PairPage({ params }: { params: { pair: string } }) {
     }
   }, [pair, activeAccounts, analyze, marketNotes]);
 
-  // Auto-poll when status is READY — re-check every 5 min until CONFIRMED or user stops
-  useEffect(() => {
-    const status = analysis?.entryStatus.status;
-    if (status === "READY" && readyPolling) {
-      scheduleNextPoll(() => runAnalysis());
-    } else if (status !== "READY") {
-      stopPolling();
-    }
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysis?.entryStatus.status, readyPolling]);
+  // Keep ref current so the poll closure is never stale
+  useEffect(() => { runAnalysisRef.current = runAnalysis; }, [runAnalysis]);
+  useEffect(() => { readyPollingRef.current = readyPolling; }, [readyPolling]);
 
-  // Stop polling when pair changes
+  // Stop when status leaves READY
+  useEffect(() => {
+    if (analysis?.entryStatus.status !== "READY" && readyPolling) stopPolling();
+  }, [analysis?.entryStatus.status, readyPolling, stopPolling]);
+
+  // Stop when pair changes
   useEffect(() => { stopPolling(); }, [params.pair, stopPolling]);
 
   const updateChecklist = (accountId: string, key: ChecklistKey, checked: boolean) => {
@@ -1081,7 +1081,11 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 {analysis?.entryStatus.status === "READY" && !readyPolling && !loading && (
                   <Button
                     variant="secondary"
-                    onClick={() => { setReadyPolling(true); }}
+                    onClick={() => {
+                      readyPollingRef.current = true;
+                      setReadyPolling(true);
+                      startPollCycle();
+                    }}
                     className="w-full sm:w-auto"
                   >
                     Watch for CONFIRMED
