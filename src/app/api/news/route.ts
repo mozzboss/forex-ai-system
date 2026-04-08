@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CURRENCIES } from "@/config/trading";
-import { fetchEconomicCalendar, getFallbackNewsEvents } from "@/lib/market/news";
+import { fetchEconomicCalendar } from "@/lib/market/news";
 import { AuthenticationError, requireAppUserId } from "@/lib/server/auth";
 import { Currency } from "@/types";
 
@@ -37,26 +37,13 @@ export async function GET(req: NextRequest) {
       minimumImpact: impact,
     });
 
-    if (events.length === 0) {
-      return NextResponse.json({
-        events: getFallbackNewsEvents().slice(0, limit),
-        source: "fallback_empty",
-        fallback: true,
-      });
-    }
-
     return NextResponse.json({
       events,
       source: "tradingeconomics",
       fallback: false,
     });
   } catch (error) {
-    console.error("News fetch failed, using fallback feed:", error);
-
-    return NextResponse.json({
-      events: getFallbackNewsEvents().slice(0, limit),
-      source: "fallback",
-      fallback: true,
-    });
+    console.error("News fetch failed:", error);
+    return NextResponse.json({ error: "News feed unavailable" }, { status: 503 });
   }
 }
