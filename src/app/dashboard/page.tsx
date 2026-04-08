@@ -61,6 +61,12 @@ interface DashboardDecisionState {
   details: string[];
 }
 
+interface NewsFeedMeta {
+  source: string | null;
+  minimumImpact?: "low" | "medium" | "high";
+  window?: string;
+}
+
 function deserializeTrade(trade: Trade): Trade {
   return {
     ...trade,
@@ -366,12 +372,19 @@ export default function DashboardPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [newsFeedMeta, setNewsFeedMeta] = useState<NewsFeedMeta>({ source: null });
+  const [marketFeedStats, setMarketFeedStats] = useState({
+    live: 0,
+    fallback: 0,
+    failed: 0,
+  });
 
   // Fetch trades + news — reruns only when user changes (not on timeframe toggle)
   const refreshTradesAndNews = useCallback(async () => {
     if (!user) {
       setTrades([]);
       setNewsEvents([]);
+      setNewsFeedMeta({ source: null });
       setPageError(null);
       return;
     }
@@ -387,12 +400,26 @@ export default function DashboardPage() {
         throw new Error("Failed to load dashboard data");
       }
 
-      const [tradeData, newsData] = await Promise.all([tradeRes.json(), newsRes.json()]);
+      const [tradeData, newsData] = await Promise.all([
+        tradeRes.json(),
+        newsRes.json() as Promise<{
+          events?: NewsEvent[];
+          source?: string;
+          minimumImpact?: "low" | "medium" | "high";
+          window?: string;
+        }>,
+      ]);
       setTrades((tradeData.trades || []).map(deserializeTrade));
       setNewsEvents((newsData.events || []).map(deserializeNewsEvent));
+      setNewsFeedMeta({
+        source: newsData.source || null,
+        minimumImpact: newsData.minimumImpact,
+        window: newsData.window,
+      });
       setPageError(null);
     } catch (error) {
       console.error(error);
+      setNewsFeedMeta({ source: null });
       setPageError("Failed to load dashboard context. Keep protecting capital until the system refreshes.");
     } finally {
       setRefreshing(false);
@@ -415,12 +442,14 @@ export default function DashboardPage() {
     if (!user) {
       setMarketSnapshots([]);
       setMarketError(null);
+      setMarketFeedStats({ live: 0, fallback: 0, failed: 0 });
       return;
     }
 
     if (dashboardPairs.length === 0) {
       setMarketSnapshots([]);
       setMarketError(null);
+      setMarketFeedStats({ live: 0, fallback: 0, failed: 0 });
       return;
     }
 
@@ -437,8 +466,16 @@ export default function DashboardPage() {
     const successfulSnapshots = marketResults
       .filter((result): result is PromiseFulfilledResult<DashboardMarketSnapshot> => result.status === "fulfilled")
       .map((result) => result.value);
+    const failedCount = marketResults.filter((result) => result.status === "rejected").length;
+    const fallbackCount = successfulSnapshots.filter((snapshot) => snapshot.fallback).length;
+    const liveCount = successfulSnapshots.length - fallbackCount;
 
     setMarketSnapshots(successfulSnapshots);
+    setMarketFeedStats({
+      live: liveCount,
+      fallback: fallbackCount,
+      failed: failedCount,
+    });
     setMarketError(
       successfulSnapshots.length === 0
         ? "Market snapshots are unavailable right now. News context is still live."
@@ -553,6 +590,38 @@ export default function DashboardPage() {
     return hints;
   }, [bestTrade, dashboardDecision.mode, heatmap, trackedPairs, upcomingHighImpact]);
 
+  const providerHealth = useMemo(() => {
+    const newsStatus: "healthy" | "degraded" | "down" =
+      newsFeedMeta.source === "fmp"
+        ? "healthy"
+        : newsFeedMeta.source === "tradingeconomics"
+          ? "degraded"
+          : "down";
+
+    const newsLabel = newsFeedMeta.source
+      ? newsFeedMeta.source === "fmp"
+        ? "News: FMP"
+        : "News: TradingEconomics"
+      : "News: Unavailable";
+    const newsDetail = newsFeedMeta.source
+      ? `${newsEvents.length} events · ${newsFeedMeta.minimumImpact || "medium"}+ · ${newsFeedMeta.window || "today+3d"}`
+      : "No provider response";
+
+    let marketStatus: "healthy" | "degraded" | "down" = "down";
+    if (marketFeedStats.live > 0 && marketFeedStats.fallback === 0 && marketFeedStats.failed === 0) {
+      marketStatus = "healthy";
+    } else if (marketFeedStats.live > 0 || marketFeedStats.fallback > 0) {
+      marketStatus = "degraded";
+    }
+
+    const marketDetail = `${marketFeedStats.live} live · ${marketFeedStats.fallback} fallback · ${marketFeedStats.failed} failed`;
+
+    return [
+      { label: newsLabel, status: newsStatus, detail: newsDetail },
+      { label: "Market feed", status: marketStatus, detail: marketDetail },
+    ];
+  }, [marketFeedStats, newsEvents.length, newsFeedMeta.minimumImpact, newsFeedMeta.source, newsFeedMeta.window]);
+
   return (
     <div className={cn("min-h-screen p-4 sm:p-6", density === "compact" ? "space-y-3" : "space-y-5")}>
 
@@ -629,6 +698,7 @@ export default function DashboardPage() {
           },
         ]}
       />
+      <ProviderHealthStrip items={providerHealth} />
 
       {/* ── ROW 2: Decision + Session Clock + KPIs ── */}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
@@ -911,6 +981,43 @@ function StatusRail({
             <div className="uppercase tracking-wide">{item.label}</div>
             <div className="text-[11px] text-white/70">{item.detail}</div>
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProviderHealthStrip({
+  items,
+}: {
+  items: Array<{ label: string; status: "healthy" | "degraded" | "down"; detail: string }>;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className={cn(
+            "rounded-xl border px-3 py-2",
+            item.status === "healthy" && "border-emerald-500/30 bg-emerald-500/10",
+            item.status === "degraded" && "border-amber-500/30 bg-amber-500/10",
+            item.status === "down" && "border-red-500/30 bg-red-500/10"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-white/90">{item.label}</span>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                item.status === "healthy" && "bg-emerald-500/20 text-emerald-200",
+                item.status === "degraded" && "bg-amber-500/20 text-amber-200",
+                item.status === "down" && "bg-red-500/20 text-red-200"
+              )}
+            >
+              {item.status}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-white/75">{item.detail}</div>
         </div>
       ))}
     </div>
