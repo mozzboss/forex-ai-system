@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
-import { AppShell, AuthProvider } from "@/components/shared";
+import { AppShell, AuthProvider, TimezoneProvider } from "@/components/shared";
 
 import "./globals.css";
 
@@ -25,9 +25,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-surface text-slate-200 antialiased">
-        <AuthProvider>
-          <AppShell>{children}</AppShell>
-        </AuthProvider>
+        <TimezoneProvider>
+          <AuthProvider>
+            <AppShell>{children}</AppShell>
+          </AuthProvider>
+        </TimezoneProvider>
       </body>
     </html>
   );

@@ -6,6 +6,7 @@ import { type HTMLAttributes } from "react";
 
 import { useAuth } from "@/hooks";
 import { cn } from "@/lib/utils";
+import { useTimezone } from "./TimezoneProvider";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" },
@@ -27,6 +28,7 @@ interface SidebarProps extends HTMLAttributes<HTMLElement> {
 export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarProps) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { timezone, toggle: toggleTimezone } = useTimezone();
 
   return (
     <aside
@@ -106,16 +108,26 @@ export function Sidebar({ className, onNavigate, onClose, ...props }: SidebarPro
           <div className="mt-1 text-[11px] text-gray-500">
             Your accounts, trades, and journal now stay scoped to this login.
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              onNavigate?.();
-              await signOut();
-            }}
-            className="mt-4 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-          >
-            Sign Out
-          </button>
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleTimezone}
+              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs font-semibold text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              title={`Switch to ${timezone === "UTC" ? "EDT" : "UTC"}`}
+            >
+              {timezone === "UTC" ? "UTC → EDT" : "EDT → UTC"}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                onNavigate?.();
+                await signOut();
+              }}
+              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
     </aside>

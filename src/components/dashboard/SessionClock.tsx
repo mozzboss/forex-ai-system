@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TRADING_CONFIG } from "@/config/trading";
 import { cn } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 interface Session {
   name: string;
@@ -96,6 +97,7 @@ function formatNYTime(date: Date): string {
 
 export function SessionClock() {
   const [now, setNow] = useState(() => new Date());
+  const { timezone } = useTimezone();
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -125,7 +127,7 @@ export function SessionClock() {
             <div className="font-mono text-sm font-semibold text-slate-300">
               {formatNYTime(now)}
             </div>
-            <div className="text-[10px] uppercase tracking-[0.15em] text-slate-600">New York</div>
+            <div className="text-[10px] uppercase tracking-[0.15em] text-slate-600">EDT</div>
           </div>
           <div className="h-6 w-px bg-white/10" />
           <div className="text-right">

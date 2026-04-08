@@ -11,7 +11,8 @@ import { derivePairDecisionSignal } from "@/lib/market/decision";
 import { buildDriverSummary, deriveMarketRead, getPairContext, toTimeLabel } from "@/lib/market/read";
 import { analyzeMarketStructure, type StructureEvent } from "@/lib/market/structure";
 import { MARKET_TIMEFRAMES, MarketTimeframe } from "@/lib/market/timeframes";
-import { cn, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent, formatTime, formatDateTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 import type {
   CurrencyPair,
   FullAnalysis,
@@ -162,6 +163,7 @@ function buildTradeNotes(marketNotes: string, entryPrice: number) {
 
 export default function PairPage({ params }: { params: { pair: string } }) {
   const { authFetch } = useAuth();
+  const { timezone } = useTimezone();
   const pair = useMemo(() => getPairFromParam(params.pair), [params.pair]);
   const { accounts, loading: accountsLoading, error: accountsError, refetch } = useAccounts();
   const { result, loading, error, cachedAt, analyze, clear } = useAnalysis();
@@ -956,7 +958,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                         </span>
                       )}
                       <span className="text-xs text-slate-500">
-                        {marketSnapshot.fallback ? "fallback" : "live"} · {new Date(marketSnapshot.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {marketSnapshot.fallback ? "fallback" : "live"} · {formatTime(new Date(marketSnapshot.asOf), timezone)} {timezone}
                       </span>
                     </div>
                   )}
@@ -1024,7 +1026,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                 <p className="mb-3 text-sm leading-6 text-gray-300">{marketStructure.summary}</p>
                 <div className="grid gap-3 md:grid-cols-3">
                   {marketStructure.events.map((event) => (
-                    <StructureEventCard key={`${event.kind}-${event.time}`} event={event} />
+                    <StructureEventCard key={`${event.kind}-${event.time}`} event={event} timezone={timezone} />
                   ))}
                 </div>
               </Card>
@@ -1152,7 +1154,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                   )}
                 >
                   <span className={cn("text-xs", analysisIsStale ? "text-red-200" : "text-yellow-300")}>
-                    Cached result from {new Date(cachedAt).toLocaleTimeString()}
+                    Cached result from {formatTime(new Date(cachedAt), timezone)} {timezone}
                     {analysisAgeMinutes !== null ? ` (${analysisAgeMinutes}m old)` : ""}
                     {analysisIsStale ? " — stale, run analysis again before recording trades." : " — re-run to refresh."}
                   </span>
@@ -1261,7 +1263,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                       <div>
                         <div className="text-sm font-semibold text-white">{event.event}</div>
                         <div className="mt-1 text-xs text-gray-500">
-                          {event.currency} / {event.time.toLocaleString()}
+                          {event.currency} / {formatTime(event.time, timezone)} {timezone}
                         </div>
                       </div>
                       <div className="text-right">
@@ -1703,7 +1705,7 @@ export default function PairPage({ params }: { params: { pair: string } }) {
                   return (
                     <div key={entry.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-surface px-4 py-3">
                       <div className="text-xs text-slate-400">
-                        {entry.createdAt.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {formatDateTime(entry.createdAt, timezone)} {timezone}
                       </div>
                       <div className="flex items-center gap-3">
                         {bias ? <span className="text-xs capitalize text-slate-300">{bias}</span> : null}
@@ -1827,7 +1829,7 @@ function CueCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StructureEventCard({ event }: { event: StructureEvent }) {
+function StructureEventCard({ event, timezone }: { event: StructureEvent; timezone: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-surface px-3 py-3">
       <div
@@ -1840,11 +1842,7 @@ function StructureEventCard({ event }: { event: StructureEvent }) {
       </div>
       <div className="mt-2 text-sm font-semibold text-white">{event.price.toFixed(4)}</div>
       <div className="mt-1 text-xs text-slate-400">
-        Broke {event.brokenLevel.toFixed(4)} at{" "}
-        {new Date(event.time).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        Broke {event.brokenLevel.toFixed(4)} at {formatTime(new Date(event.time), timezone)} {timezone}
       </div>
     </div>
   );

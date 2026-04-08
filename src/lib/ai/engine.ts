@@ -137,8 +137,11 @@ function buildAnalysisPrompt(
     .join("\n");
 
   const pairCurrencies = `${pair.slice(0, 3)} and ${pair.slice(3, 6)}`;
+  const nowUtc = new Date().toUTCString();
 
   return `Analyze ${pair} for a potential trade setup. Think through each layer in order before writing the JSON.
+
+CURRENT UTC TIME: ${nowUtc} — use this to determine the active session. Do NOT infer session from bar timestamps.
 
 STEP 1 — MACRO: What is the fundamental backdrop for ${pairCurrencies}? Rate differentials, central bank bias, inflation trajectory.
 STEP 2 — STRUCTURE: What does price structure say on H4 and D1? Higher highs/lows, key S/R, trend direction.

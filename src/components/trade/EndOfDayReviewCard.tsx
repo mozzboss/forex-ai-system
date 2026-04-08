@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks";
 import type { EndOfDayReview, EndOfDayReviewContext } from "@/types";
 import { Button, Card, CardHeader } from "@/components/ui";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatTime, formatDate } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 function deserializeReview(review: EndOfDayReview | null | undefined) {
   if (!review) {
@@ -42,6 +43,7 @@ function deserializeContext(context: EndOfDayReviewContext | null | undefined) {
 
 export function EndOfDayReviewCard() {
   const { authFetch, user } = useAuth();
+  const { timezone } = useTimezone();
   const [review, setReview] = useState<EndOfDayReview | null>(null);
   const [context, setContext] = useState<EndOfDayReviewContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,8 +112,8 @@ export function EndOfDayReviewCard() {
 
   const reviewDateLabel = useMemo(() => {
     const date = review?.date || context?.date;
-    return date ? date.toLocaleDateString() : "today";
-  }, [context?.date, review?.date]);
+    return date ? formatDate(date, timezone) : "today";
+  }, [context?.date, review?.date, timezone]);
 
   const reviewInsights = useMemo(() => {
     if (!context) {
@@ -217,7 +219,7 @@ export function EndOfDayReviewCard() {
                   {review.disciplineScore}/10
                 </div>
                 <div className="mt-2 text-xs text-slate-400">
-                  Generated {review.generatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  Generated {formatTime(review.generatedAt, timezone)} {timezone}
                 </div>
               </div>
             </div>

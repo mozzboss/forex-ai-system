@@ -3,8 +3,9 @@
 import { MarketTimeframe } from "@/lib/market/timeframes";
 import { getPricePrecision } from "@/config/trading";
 import { TRADING_CONFIG } from "@/config/trading";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
 import type { CurrencyPair } from "@/types";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 interface CandlestickBar {
   time: string;
@@ -126,6 +127,8 @@ export function CandlestickChart({
   showLiquiditySweeps = false,
   className,
 }: CandlestickChartProps) {
+  const { timezone } = useTimezone();
+
   if (bars.length === 0) {
     return (
       <div className={cn("rounded-xl border border-dashed border-white/10 bg-surface px-4 py-10 text-center text-sm text-gray-500", className)}>
@@ -367,10 +370,7 @@ export function CandlestickChart({
                   fontSize="9.5"
                   fill="rgba(148,163,184,0.75)"
                 >
-                  {new Date(bar.time).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatTime(new Date(bar.time), timezone)}
                 </text>
               )}
             </g>

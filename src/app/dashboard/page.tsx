@@ -20,7 +20,8 @@ import { Button, Card, CardHeader, DecisionPanel, StatusBadge } from "@/componen
 import { TRADING_CONFIG, getAccountRules } from "@/config/trading";
 import { useAccounts, useAuth, useTrackedPairs } from "@/hooks";
 import { MarketTimeframe } from "@/lib/market/timeframes";
-import { cn, formatCurrency, formatPercent, getBiasColor, isWithinSession } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent, getBiasColor, isWithinSession, formatTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 import type {
   Bias,
   Currency,
@@ -396,12 +397,14 @@ function deriveDashboardDecisionState({
   bestTrade,
   bestSignal,
   disciplineScore,
+  timezone,
 }: {
   trades: Trade[];
   newsEvents: NewsEvent[];
   bestTrade?: Trade;
   bestSignal?: PairAnalysisSignal;
   disciplineScore: number;
+  timezone: string;
 }): DashboardDecisionState {
   const activeExposure = trades.filter((trade) => trade.status === "pending" || trade.status === "open");
   const invalidExposure = activeExposure.find((trade) => trade.entryStatus === "INVALID");
@@ -428,7 +431,7 @@ function deriveDashboardDecisionState({
       reason: `You have live exposure with high-impact ${highImpactSoon.currency} news coming inside the 30-minute buffer.`,
       action: "Reduce, close, or protect open risk before the release.",
       details: [
-        `${highImpactSoon.event} is due at ${highImpactSoon.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+        `${highImpactSoon.event} is due at ${formatTime(highImpactSoon.time, timezone)} ${timezone}.`,
         `${activeExposure.length} open or pending trade${activeExposure.length === 1 ? "" : "s"} currently exposed.`,
       ],
     };
@@ -465,7 +468,7 @@ function deriveDashboardDecisionState({
       reason: `${bestSignal.pair} is CONFIRMED on the latest board scan and currently leads with a ${bestSignal.score}/10 score.`,
       action: `Open ${bestSignal.pair} and execute only if chart structure is still aligned.`,
       details: [
-        `${bestSignal.pair} was last scanned at ${bestSignal.updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+        `${bestSignal.pair} was last scanned at ${formatTime(bestSignal.updatedAt, timezone)} ${timezone}.`,
         "No high-impact event is inside the immediate buffer window.",
       ],
     };
@@ -486,6 +489,7 @@ function deriveDashboardDecisionState({
 
 export default function DashboardPage() {
   const { authFetch, user } = useAuth();
+  const { timezone } = useTimezone();
   const { accounts, loading: accountsLoading, error: accountError, refetch } = useAccounts();
   const {
     trackedPairs,
@@ -829,8 +833,9 @@ export default function DashboardPage() {
         bestTrade,
         bestSignal,
         disciplineScore: stats.disciplineScore,
+        timezone,
       }),
-    [bestSignal, bestTrade, newsEvents, stats.disciplineScore, trades]
+    [bestSignal, bestTrade, newsEvents, stats.disciplineScore, trades, timezone]
   );
 
   const waitHints = useMemo(() => {
@@ -1075,7 +1080,7 @@ export default function DashboardPage() {
           <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
             <span>{pairSignalsLoading ? "Loading board context..." : `${Object.keys(pairSignals).length} pair scans loaded`}</span>
             {boardScanStamp ? (
-              <span>Last full scan {boardScanStamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <span>Last full scan {formatTime(boardScanStamp, timezone)} {timezone}</span>
             ) : null}
           </div>
           {pairSignalsError ? (

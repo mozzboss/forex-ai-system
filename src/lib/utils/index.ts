@@ -68,6 +68,39 @@ export function formatDenials(reasons: DenialReason[]): string[] {
   return reasons.map((r) => getDenialExplanation(r));
 }
 
+// --- Timezone-aware formatters ---
+
+const TZ_MAP: Record<string, string> = {
+  UTC: "UTC",
+  EDT: "America/New_York",
+};
+
+export function formatTime(
+  date: Date | string | number,
+  timezone: string = "UTC",
+  opts: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" }
+): string {
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleTimeString("en-GB", { ...opts, timeZone: TZ_MAP[timezone] ?? timezone });
+}
+
+export function formatDateTime(
+  date: Date | string | number,
+  timezone: string = "UTC",
+  opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+): string {
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleString("en-GB", { ...opts, timeZone: TZ_MAP[timezone] ?? timezone });
+}
+
+export function formatDate(
+  date: Date | string | number,
+  timezone: string = "UTC"
+): string {
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleDateString("en-GB", { timeZone: TZ_MAP[timezone] ?? timezone });
+}
+
 // --- Time helpers ---
 
 export function isWithinSession(

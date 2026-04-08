@@ -14,7 +14,8 @@ import {
 
 import { Card, CardHeader } from "@/components/ui";
 import type { Currency, NewsEvent } from "@/types";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 interface NewsImpactChartProps {
   events: NewsEvent[];
@@ -38,6 +39,7 @@ function impactWeight(impact: NewsEvent["impact"]) {
 }
 
 export function NewsImpactChart({ events }: NewsImpactChartProps) {
+  const { timezone } = useTimezone();
   const analytics = useMemo(() => {
     const byCurrency = new Map<Currency, CurrencyPressurePoint>();
 
@@ -142,7 +144,7 @@ export function NewsImpactChart({ events }: NewsImpactChartProps) {
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                       <span>{event.currency}</span>
                       <span>•</span>
-                      <span>{event.time.toLocaleString()}</span>
+                      <span>{formatTime(event.time, timezone)} {timezone}</span>
                     </div>
                   </div>
                   <div className="text-right">

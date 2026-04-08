@@ -7,7 +7,8 @@ import { Card, CardHeader } from "@/components/ui";
 import { getPricePrecision } from "@/config/trading";
 import { buildDriverSummary, deriveMarketRead, toTimeLabel } from "@/lib/market/read";
 import { MARKET_TIMEFRAMES, MarketTimeframe } from "@/lib/market/timeframes";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 import type { CurrencyPair, NewsEvent } from "@/types";
 
 export interface DashboardMarketSnapshot {
@@ -54,6 +55,7 @@ export function DashboardMarketBoard({
   onTimeframeChange,
 }: DashboardMarketBoardProps) {
   const [activePair, setActivePair] = useState<CurrencyPair | null>(null);
+  const { timezone } = useTimezone();
 
   useEffect(() => {
     if (highlightedPair && snapshots.some((snapshot) => snapshot.pair === highlightedPair)) {
@@ -171,7 +173,7 @@ export function DashboardMarketBoard({
               ? `${activeSnapshot.change.toFixed(precision)} (${activeSnapshot.percentChange || 0}%)`
               : "Change unavailable"}
           </span>
-          <span>As of {new Date(activeSnapshot.asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          <span>As of {formatTime(new Date(activeSnapshot.asOf), timezone)} {timezone}</span>
           <span>{activeSnapshot.fallback ? "Fallback feed" : "Live provider feed"}</span>
         </div>
 
@@ -262,7 +264,7 @@ export function DashboardMarketBoard({
                       <div>
                         <div className="text-sm font-semibold text-white">{event.event}</div>
                         <div className="mt-1 text-xs text-gray-500">
-                          {event.currency} • {event.time.toLocaleString()}
+                          {event.currency} • {formatTime(event.time, timezone)} {timezone}
                         </div>
                       </div>
                       <div className="text-right">

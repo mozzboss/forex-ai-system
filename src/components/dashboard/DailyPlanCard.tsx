@@ -6,7 +6,8 @@ import { getAccountRules } from "@/config/trading";
 import { useAuth } from "@/hooks";
 import { Button, Card, CardHeader } from "@/components/ui";
 import type { DailyPlan, DailyPlanContext } from "@/types";
-import { cn, formatPercent } from "@/lib/utils";
+import { cn, formatPercent, formatTime, formatDate } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 function deserializePlan(plan: DailyPlan | null | undefined) {
   if (!plan) {
@@ -62,6 +63,7 @@ function deserializeContext(context: DailyPlanContext | null | undefined) {
 
 export function DailyPlanCard() {
   const { authFetch, user } = useAuth();
+  const { timezone } = useTimezone();
   const [plan, setPlan] = useState<DailyPlan | null>(null);
   const [context, setContext] = useState<DailyPlanContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -228,7 +230,7 @@ export function DailyPlanCard() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.2em] text-green-300/80">
-                  Plan for {plan.date.toLocaleDateString()}
+                  Plan for {formatDate(plan.date, timezone)}
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-white">
                   {plan.pairs.length > 0 ? plan.pairs.join(" • ") : "No primary watchlist pairs"}
@@ -249,7 +251,7 @@ export function DailyPlanCard() {
                 <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Max trades</div>
                 <div className="mt-2 text-2xl font-bold text-white">{plan.maxTrades}</div>
                 <div className="mt-2 text-xs text-slate-400">
-                  Updated {plan.updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  Updated {formatTime(plan.updatedAt, timezone)} {timezone}
                 </div>
               </div>
             </div>
@@ -269,7 +271,7 @@ export function DailyPlanCard() {
               title="Primary Risk"
               body={
                 planInsights.nextHighImpactEvent
-                  ? `${planInsights.nextHighImpactEvent.currency} ${planInsights.nextHighImpactEvent.event} is the next high-impact catalyst at ${planInsights.nextHighImpactEvent.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Keep the 30-minute news buffer intact.`
+                  ? `${planInsights.nextHighImpactEvent.currency} ${planInsights.nextHighImpactEvent.event} is the next high-impact catalyst at ${formatTime(planInsights.nextHighImpactEvent.time, timezone)} ${timezone}. Keep the 30-minute news buffer intact.`
                   : "No immediate high-impact event is scheduled, but every planned trade still needs a final calendar check."
               }
               accent="text-red-300"

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { Sidebar } from "./Sidebar";
 import { useAuth } from "./AuthProvider";
+import { useTimezone } from "./TimezoneProvider";
 
 function LoadingScreen({ message }: { message: string }) {
   return (
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const { timezone, toggle: toggleTimezone } = useTimezone();
 
   const isAuthRoute = pathname.startsWith("/auth");
 
@@ -89,17 +91,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="text-sm font-semibold text-white">Mobile Workspace</div>
           </div>
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200 transition-all hover:-translate-y-[1px] hover:bg-white/10 hover:text-white"
-          >
-            <span
-              aria-hidden="true"
-              className="block h-3 w-4 bg-[linear-gradient(to_bottom,_currentColor_0,_currentColor_2px,_transparent_2px,_transparent_5px,_currentColor_5px,_currentColor_7px,_transparent_7px,_transparent_10px,_currentColor_10px,_currentColor_12px)]"
-            />
-            Menu
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleTimezone}
+              className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs font-semibold text-slate-300 transition-all hover:bg-white/10 hover:text-white"
+              title={`Switch to ${timezone === "UTC" ? "EDT" : "UTC"}`}
+            >
+              {timezone}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-200 transition-all hover:-translate-y-[1px] hover:bg-white/10 hover:text-white"
+            >
+              <span
+                aria-hidden="true"
+                className="block h-3 w-4 bg-[linear-gradient(to_bottom,_currentColor_0,_currentColor_2px,_transparent_2px,_transparent_5px,_currentColor_5px,_currentColor_7px,_transparent_7px,_transparent_10px,_currentColor_10px,_currentColor_12px)]"
+              />
+              Menu
+            </button>
+          </div>
         </div>
         {children}
       </main>

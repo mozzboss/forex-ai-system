@@ -1,13 +1,15 @@
 "use client";
 
 import { JournalEntry } from "@/types";
-import { cn } from "@/lib/utils";
+import { cn, formatDate, formatTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
 }
 
 export function JournalEntryCard({ entry }: JournalEntryCardProps) {
+  const { timezone } = useTimezone();
   const typeColors: Record<string, string> = {
     trade: "text-blue-300 bg-blue-400/10 border-blue-400/20",
     review: "text-violet-300 bg-violet-400/10 border-violet-400/20",
@@ -36,7 +38,7 @@ export function JournalEntryCard({ entry }: JournalEntryCardProps) {
           ) : null}
         </div>
         <span className="text-[11px] text-slate-500">
-          {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {formatDate(date, timezone)} {formatTime(date, timezone)} {timezone}
         </span>
       </div>
 

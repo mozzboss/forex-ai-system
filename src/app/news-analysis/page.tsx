@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, CardHeader, EntryStatusCard, StatusBadge } from "@/components/ui";
 import { ALL_PAIRS } from "@/config/trading";
 import { useAuth } from "@/hooks";
-import { cn, getBiasColor } from "@/lib/utils";
+import { cn, getBiasColor, formatTime } from "@/lib/utils";
+import { useTimezone } from "@/components/shared/TimezoneProvider";
 import type { Currency, CurrencyPair, NewsAnalysisResult, NewsEvent } from "@/types";
 
 function formatPrice(value: number) {
@@ -79,8 +80,8 @@ function InsightBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatEventTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function formatEventTime(date: Date, timezone: string) {
+  return formatTime(date, timezone);
 }
 
 function timeUntil(date: Date) {
@@ -200,6 +201,7 @@ function buildAutoMarketBrief(events: NewsEvent[]): AutoMarketBrief {
 
 export default function NewsAnalysisPage() {
   const { authFetch } = useAuth();
+  const { timezone } = useTimezone();
   const [headline, setHeadline] = useState("");
   const [summary, setSummary] = useState("");
   const [pair, setPair] = useState<CurrencyPair | "">("");
@@ -299,7 +301,7 @@ export default function NewsAnalysisPage() {
   };
 
   const prefillFromEvent = (event: NewsEvent, enableTelegram = false) => {
-    const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) â€” ${formatEventTime(event.time)}`;
+    const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) – ${formatEventTime(event.time, timezone)}`;
     const summaryText = [
       `Impact: ${event.impact.toUpperCase()}`,
       event.forecast ? `Forecast: ${event.forecast}` : null,
@@ -345,7 +347,7 @@ export default function NewsAnalysisPage() {
               <CardHeader className="mb-0">Today&apos;s Market Brief (auto)</CardHeader>
               <div className="text-right text-[11px] text-slate-500">
                 <div>{eventsSource ? `Source: ${eventsSource}` : "Source: unavailable"}</div>
-                <div>{eventsLastUpdated ? `Updated ${eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Waiting for feed"}</div>
+                <div>{eventsLastUpdated ? `Updated ${formatTime(eventsLastUpdated, timezone)} ${timezone}` : "Waiting for feed"}</div>
               </div>
             </div>
 
@@ -518,7 +520,7 @@ export default function NewsAnalysisPage() {
                             <ImpactChip impact={event.impact} />
                           </div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {formatEventTime(event.time)} Â· in {timeUntil(event.time)}
+                            {formatEventTime(event.time, timezone)} {timezone} · in {timeUntil(event.time)}
                             {(event.forecast || event.previous) && (
                               <span className="text-slate-600">
                                 {" "}Â· {event.forecast ? `F: ${event.forecast}` : "F: n/a"} Â· {event.previous ? `P: ${event.previous}` : "P: n/a"}
@@ -539,7 +541,7 @@ export default function NewsAnalysisPage() {
                   ))}
                   {eventsLastUpdated && (
                     <p className="text-[11px] text-slate-600">
-                      {eventsSource ? `${eventsSource} Â· ` : ""}Updated {eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {eventsSource ? `${eventsSource} · ` : ""}Updated {formatTime(eventsLastUpdated, timezone)} {timezone}
                     </p>
                   )}
                 </div>
@@ -592,8 +594,8 @@ export default function NewsAnalysisPage() {
                 <div className="flex items-start justify-between gap-3">
                   <CardHeader className="mb-0">Decision</CardHeader>
                   <div className="text-[11px] text-slate-500">
-                    {new Date(result.analyzedAt).toLocaleTimeString()}
-                    {result.pair ? ` Â· ${result.pair}` : ""}
+                    {formatTime(new Date(result.analyzedAt), timezone)} {timezone}
+                    {result.pair ? ` · ${result.pair}` : ""}
                   </div>
                 </div>
                 <div className="mt-3 space-y-3">
