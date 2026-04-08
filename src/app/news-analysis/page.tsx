@@ -69,6 +69,8 @@ export default function NewsAnalysisPage() {
   const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const [eventsLastUpdated, setEventsLastUpdated] = useState<Date | null>(null);
+  const [eventsSource, setEventsSource] = useState<string | null>(null);
 
   const templates = [
     {
@@ -125,6 +127,8 @@ export default function NewsAnalysisPage() {
           time: new Date(event.time),
         }));
         setNewsEvents(parsed);
+        setEventsLastUpdated(new Date());
+        setEventsSource(data.source || null);
       } catch (err) {
         setEventsError(err instanceof Error ? err.message : "Could not load calendar.");
       } finally {
@@ -167,7 +171,7 @@ export default function NewsAnalysisPage() {
     }
   };
 
-  const prefillFromEvent = (event: NewsEvent) => {
+  const prefillFromEvent = (event: NewsEvent, enableTelegram = false) => {
     const localTime = formatEventTime(event.time);
     const headlineText = `${event.currency} ${event.event} (${event.impact.toUpperCase()}) — ${localTime}`;
     const summaryText = [
@@ -181,6 +185,7 @@ export default function NewsAnalysisPage() {
 
     setHeadline(headlineText);
     setSummary(summaryText);
+    setSendTelegram(enableTelegram || sendTelegram);
     setResult(null);
   };
 
@@ -225,8 +230,18 @@ export default function NewsAnalysisPage() {
       </section>
 
       {/* Pinned daily brief */}
-      <Card>
-        <CardHeader>{pinnedBrief.title}</CardHeader>
+      <Card className="sticky top-3 z-20 border-brand-500/20 bg-surface-light/90 backdrop-blur">
+        <div className="flex items-center justify-between gap-3">
+          <CardHeader className="mb-0">{pinnedBrief.title}</CardHeader>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+            <span className="rounded-full bg-brand-500/15 px-2 py-1 text-brand-200">auto</span>
+            {eventsLastUpdated ? (
+              <span className="text-slate-400">
+                Updated {eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : null}
+          </div>
+        </div>
         <ul className="space-y-2 text-sm leading-6 text-slate-300">
           {pinnedBrief.bullets.map((item) => (
             <li key={item} className="flex items-start gap-2">
@@ -375,8 +390,10 @@ export default function NewsAnalysisPage() {
                       <div className="text-sm font-semibold text-white truncate">
                         {event.currency} · {event.event}
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {formatEventTime(event.time)} · {timeUntil(event.time)} · {event.impact.toUpperCase()}
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>{formatEventTime(event.time)}</span>
+                        <span>· {timeUntil(event.time)}</span>
+                        <ImpactChip impact={event.impact} />
                       </div>
                       {(event.forecast || event.previous) && (
                         <div className="text-[11px] text-slate-600">
@@ -385,11 +402,19 @@ export default function NewsAnalysisPage() {
                         </div>
                       )}
                     </div>
-                    <Button size="sm" variant="secondary" onClick={() => prefillFromEvent(event)}>
-                      Analyze
-                    </Button>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Button size="sm" variant="secondary" onClick={() => prefillFromEvent(event, false)}>
+                        Analyze
+                      </Button>
+                      <Button size="sm" onClick={() => prefillFromEvent(event, true)}>
+                        Analyze + Telegram
+                      </Button>
+                    </div>
                   </div>
                 ))}
+                <div className="text-[11px] text-slate-500">
+                  Source: {eventsSource || "unknown"} · {eventsLastUpdated ? eventsLastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "just now"}
+                </div>
               </div>
             )}
           </Card>
@@ -589,6 +614,20 @@ function InsightBlock({ label, value }: { label: string; value: string }) {
       <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <p className="text-sm leading-5 text-slate-300">{value}</p>
     </div>
+  );
+}
+
+function ImpactChip({ impact }: { impact: NewsEvent["impact"] }) {
+  const map: Record<NewsEvent["impact"], { bg: string; text: string; label: string }> = {
+    high: { bg: "bg-red-500/15", text: "text-red-300", label: "HIGH" },
+    medium: { bg: "bg-amber-500/15", text: "text-amber-200", label: "MED" },
+    low: { bg: "bg-slate-500/15", text: "text-slate-300", label: "LOW" },
+  };
+  const tone = map[impact];
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide", tone.bg, tone.text)}>
+      {tone.label}
+    </span>
   );
 }
 
