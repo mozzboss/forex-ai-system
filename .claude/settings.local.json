@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npm run:*)",
+      "Bash(npx skills:*)",
+      "Read(//c/Users/mozzb/FOREX/**)",
+      "Bash(tar -xzf forex-ai-system.tar.gz)",
+      "Bash(wc -l /c/Users/mozzb/FOREX/forex-ai-system/src/**/*.ts /c/Users/mozzb/FOREX/forex-ai-system/src/**/*.tsx)",
+      "Bash(xargs wc:*)",
+      "Bash(node -e \"require\\('@supabase/ssr'\\); console.log\\('ok'\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)"
+    ]
+  }
+}
