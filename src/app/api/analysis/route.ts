@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeMarket } from "@/lib/ai/engine";
 import { derivePairDecisionSignal, shouldSendDecisionAlert } from "@/lib/market/decision";
 import { formatNewsContextForAnalysis, fetchEconomicCalendar, getPairCurrencies } from "@/lib/market/news";
-import { fetchMarketSnapshot, formatMarketContextForAnalysis } from "@/lib/market/prices";
+import { fetchMultiTimeframeContext } from "@/lib/market/prices";
 import { shouldAllowTrade } from "@/lib/market/denial";
 import { AuthenticationError, requireAppUserId } from "@/lib/server/auth";
 import { getTelegramAlertTarget, listAccounts } from "@/lib/server/persistence";
@@ -51,16 +51,17 @@ export async function POST(req: NextRequest) {
     let enrichedMarketData = marketData;
 
     try {
-      const marketSnapshot = await fetchMarketSnapshot(pair);
-      const pairNewsEvents = await fetchEconomicCalendar({
-        currencies: getPairCurrencies(pair),
-        limit: 6,
-        minimumImpact: "medium",
-      });
+      const [mtfContext, pairNewsEvents] = await Promise.all([
+        fetchMultiTimeframeContext(pair),
+        fetchEconomicCalendar({
+          currencies: getPairCurrencies(pair),
+          limit: 6,
+          minimumImpact: "medium",
+        }),
+      ]);
 
-      const marketContext = formatMarketContextForAnalysis(marketSnapshot);
       const newsContext = formatNewsContextForAnalysis(pairNewsEvents, pair);
-      enrichedMarketData = [marketData, marketContext, newsContext].filter(Boolean).join("\n\n");
+      enrichedMarketData = [marketData, mtfContext.formattedContext, newsContext].filter(Boolean).join("\n\n");
     } catch (newsError) {
       console.error("Analysis market/news enrichment failed:", newsError);
       enrichedMarketData = [

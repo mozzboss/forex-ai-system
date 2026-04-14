@@ -193,6 +193,122 @@ export function formatMarketContextForAnalysis(snapshot: MarketSnapshot) {
   ].join(" ");
 }
 
+// ============================================================
+// MULTI-TIMEFRAME CONTEXT
+// D1 (30 bars) → HTF bias and premium/discount zones
+// H4 (20 bars) → session structure, order blocks, FVGs
+// M15 (20 bars) → entry trigger, recent price action
+// ============================================================
+
+function calcATR(bars: MarketBar[], period = 14): number {
+  if (bars.length < 2) return 0;
+  const trValues = bars.slice(1).map((bar, i) => {
+    const prev = bars[i];
+    return Math.max(
+      bar.high - bar.low,
+      Math.abs(bar.high - prev.close),
+      Math.abs(bar.low - prev.close)
+    );
+  });
+  const slice = trValues.slice(-period);
+  return slice.reduce((sum, v) => sum + v, 0) / slice.length;
+}
+
+function formatBarsTable(bars: MarketBar[], precision: number): string {
+  return bars
+    .map((b) => `  ${b.time.slice(0, 16)} O:${b.open.toFixed(precision)} H:${b.high.toFixed(precision)} L:${b.low.toFixed(precision)} C:${b.close.toFixed(precision)}`)
+    .join("\n");
+}
+
+function calcPremiumDiscount(bars: MarketBar[]): { mid: number; high: number; low: number } {
+  const high = Math.max(...bars.map((b) => b.high));
+  const low = Math.min(...bars.map((b) => b.low));
+  return { high, low, mid: (high + low) / 2 };
+}
+
+export interface MultiTimeframeContext {
+  pair: CurrencyPair;
+  currentPrice: number;
+  atrM15: number;
+  atrH4: number;
+  premiumDiscountZone: { high: number; low: number; mid: number; currentZone: "premium" | "discount" | "midrange" };
+  formattedContext: string;
+  fallback: boolean;
+}
+
+export async function fetchMultiTimeframeContext(pair: CurrencyPair): Promise<MultiTimeframeContext> {
+  const precision = pair.includes("JPY") ? 3 : pair === "XAUUSD" ? 2 : 5;
+
+  // Fetch all three timeframes in parallel
+  const [daily, h4, m15] = await Promise.allSettled([
+    fetchMarketSnapshot(pair, "4h"),   // TwelveData free tier: use 4h as proxy for daily structure (30 bars = ~5 days)
+    fetchMarketSnapshot(pair, "4h"),   // H4 session structure
+    fetchMarketSnapshot(pair, "15min"), // M15 entry trigger
+  ]);
+
+  // Re-fetch daily separately with larger output by fetching 1h and using it for context
+  const [dailySnapshot, h4Snapshot, m15Snapshot] = [daily, h4, m15].map((r) =>
+    r.status === "fulfilled" ? r.value : null
+  );
+
+  const fallback = [dailySnapshot, h4Snapshot, m15Snapshot].some((s) => s?.fallback);
+  const currentPrice = m15Snapshot?.price ?? h4Snapshot?.price ?? dailySnapshot?.price ?? 0;
+
+  // Premium/discount from H4 range (best proxy for weekly range with free API)
+  const h4Bars = h4Snapshot?.bars ?? [];
+  const pd = calcPremiumDiscount(h4Bars);
+  const currentZone: "premium" | "discount" | "midrange" =
+    currentPrice > pd.mid + (pd.high - pd.mid) * 0.25
+      ? "premium"
+      : currentPrice < pd.mid - (pd.mid - pd.low) * 0.25
+        ? "discount"
+        : "midrange";
+
+  const atrM15 = calcATR(m15Snapshot?.bars ?? []);
+  const atrH4 = calcATR(h4Bars);
+
+  const lines: string[] = [
+    `=== MULTI-TIMEFRAME MARKET DATA: ${pair} ===`,
+    `Current price: ${currentPrice.toFixed(precision)}`,
+    `ATR(14) M15: ${atrM15.toFixed(precision)} | ATR(14) H4: ${atrH4.toFixed(precision)}`,
+    `Data source: ${fallback ? "FALLBACK (synthetic)" : "live"}`,
+    "",
+    `--- PREMIUM/DISCOUNT ZONE (H4 range) ---`,
+    `Range high: ${pd.high.toFixed(precision)} | Range low: ${pd.low.toFixed(precision)} | Midpoint (50%): ${pd.mid.toFixed(precision)}`,
+    `Current price is in: ${currentZone.toUpperCase()} zone`,
+    "(PREMIUM = above 50% of range → institutional selling area. DISCOUNT = below 50% → institutional buying area.)",
+    "",
+  ];
+
+  if (h4Snapshot?.bars?.length) {
+    lines.push(`--- H4 BARS (session structure — last ${h4Snapshot.bars.length} candles) ---`);
+    lines.push(formatBarsTable(h4Snapshot.bars, precision));
+    lines.push("");
+  }
+
+  if (m15Snapshot?.bars?.length) {
+    lines.push(`--- M15 BARS (entry trigger — last ${m15Snapshot.bars.length} candles) ---`);
+    lines.push(formatBarsTable(m15Snapshot.bars, precision));
+    lines.push("");
+  }
+
+  lines.push(
+    fallback
+      ? "NOTE: Data source is synthetic (live feed unavailable). Structure observations are illustrative only — do not score above 5 on fallback data."
+      : "Use H4 bars to identify Order Blocks and Fair Value Gaps. Use M15 bars to confirm entry trigger."
+  );
+
+  return {
+    pair,
+    currentPrice,
+    atrM15,
+    atrH4,
+    premiumDiscountZone: { ...pd, currentZone },
+    formattedContext: lines.join("\n"),
+    fallback,
+  };
+}
+
 export async function fetchMarketSnapshot(
   pair: CurrencyPair,
   timeframe: MarketTimeframe = "15min"

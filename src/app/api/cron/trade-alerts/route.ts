@@ -6,7 +6,7 @@ import { deliverAlert, isEmailFallbackConfigured, sendFallbackEmail } from "@/li
 import { derivePairDecisionSignal } from "@/lib/market/decision";
 import { shouldAllowTrade } from "@/lib/market/denial";
 import { fetchEconomicCalendar, formatNewsContextForAnalysis, getPairCurrencies } from "@/lib/market/news";
-import { fetchMarketSnapshot, formatMarketContextForAnalysis } from "@/lib/market/prices";
+import { fetchMultiTimeframeContext } from "@/lib/market/prices";
 import { prisma } from "@/lib/prisma";
 import {
   getSavedDailyPlan,
@@ -98,8 +98,8 @@ async function getUserScanPairs(userId: string, maxPairs: number): Promise<Curre
 
 async function buildEnrichedMarketData(pair: CurrencyPair) {
   try {
-    const [snapshot, events] = await Promise.all([
-      fetchMarketSnapshot(pair),
+    const [mtfContext, events] = await Promise.all([
+      fetchMultiTimeframeContext(pair),
       fetchEconomicCalendar({
         currencies: getPairCurrencies(pair),
         limit: 6,
@@ -108,7 +108,7 @@ async function buildEnrichedMarketData(pair: CurrencyPair) {
     ]);
 
     return [
-      formatMarketContextForAnalysis(snapshot),
+      mtfContext.formattedContext,
       formatNewsContextForAnalysis(events, pair),
     ].join("\n\n");
   } catch (error) {

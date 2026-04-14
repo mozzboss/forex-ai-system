@@ -76,6 +76,14 @@ HARD RULES:
 - Every setup needs a specific stop loss level beyond a swept liquidity pool or broken OB. No SL = no trade.
 - News within 30 minutes = WAIT unless already in profit and managing the position.
 - If you cannot identify a specific Order Block, FVG, or liquidity sweep — there is NO setup. Return tradeSetup: null.
+- If market data is marked FALLBACK (synthetic), cap your score at 5 and set decision to DENY regardless.
+- ATR(14) is provided — use it to validate that your SL distance is realistic (SL should be 0.5–2.0× ATR from entry, never tighter than 0.3× ATR).
+- The premium/discount zone is pre-calculated from real H4 bars. Use it. A LONG in PREMIUM or SHORT in DISCOUNT without a 9+ reversal signal is an automatic DENY.
+
+READING THE BAR DATA:
+- H4 bars: scan for the last bearish candle before a bullish impulse (bullish Order Block) or vice versa. A Fair Value Gap is three candles where candle[n].low > candle[n-2].high (bullish FVG) or candle[n].high < candle[n-2].low (bearish FVG).
+- M15 bars: look for the displacement candle that confirms the entry. A displacement candle closes strongly through a recent swing and has a larger-than-average body.
+- Equal highs/lows: two or more wicks that top/bottom within 1-2 pips of each other are a liquidity pool. Note them explicitly.
 
 You must respond in valid JSON only — no markdown, no explanation outside JSON. Be precise with price levels to the correct pip decimal for the pair.`;
 
@@ -259,18 +267,18 @@ function buildAnalysisPrompt(
 
   const nowUtc = new Date().toUTCString();
 
-  return `Analyze ${pair} for a potential trade setup. Think through each layer in order before writing the JSON.
+  return `Analyze ${pair} for a potential trade setup. Real multi-timeframe bar data is provided below — use it. Do not guess structure you can read directly from the bars.
 
 CURRENT TIME (UTC): ${nowUtc}
 Use this to determine the active session (London 07:00–16:00 UTC, New York 12:00–21:00 UTC, overlap 12:00–16:00 UTC) and whether any upcoming news events are inside the 30-minute buffer.
 
 STEP 1 — MACRO: What is the fundamental backdrop for ${pairCurrencies}? Rate differentials, central bank bias, inflation trajectory.
-STEP 2 — STRUCTURE: What does price structure say on H4 and D1? Higher highs/lows, key S/R, trend direction.
+STEP 2 — STRUCTURE: Read the H4 bars directly. Identify the most recent swing highs and lows. Is price making higher highs/lows (bullish) or lower highs/lows (bearish)? Locate the last Order Block and any Fair Value Gap. Check the premium/discount zone provided — state explicitly whether price is in a buy zone or sell zone.
 STEP 3 — SENTIMENT: Where is retail positioned? Is this a fade opportunity or trend continuation?
 STEP 4 — SESSION & NEWS: Is this an active session (London/NY)? Are there high-impact events within 30 minutes?
-STEP 5 — SETUP: Given the above, is there a valid trade setup? If the market is choppy, ranging without direction, or sessions are inactive — there is NO setup. Set tradeSetup to null.
-STEP 6 — ENTRY STATUS: Based on current price action, what is the entry status? Be strict: CONFIRMED only when price has triggered at a key level with clear candle confirmation.
-STEP 7 — SCORE & DECISION: Score the setup honestly (see rubric). Inflate nothing. Score below 7 = DENY. Score 7+ but entry not CONFIRMED = WAIT.
+STEP 5 — SETUP: Given the above, is there a valid trade setup? Read the M15 bars for the entry trigger. If no liquidity sweep or displacement candle is visible in the M15 data — set tradeSetup to null. Do not invent a setup.
+STEP 6 — ENTRY STATUS: Base your entry status strictly on what the M15 bars show. CONFIRMED = a displacement candle is visible in the provided M15 data. READY = price is at a valid OB/FVG in the H4 data. WAIT = structure is there but no trigger yet.
+STEP 7 — SCORE & DECISION: Score based only on what you can observe in the data. If data is FALLBACK, maximum score is 5. Inflate nothing.
 
 ACCOUNT CONTEXT (factor into risk assessment and funded-account logic):
 ${accountContext}
