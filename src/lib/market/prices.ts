@@ -6,20 +6,6 @@ import { CurrencyPair } from "@/types";
 
 type MarketSource = "twelvedata" | "fallback";
 
-interface TwelveDataQuoteResponse {
-  close?: string;
-  open?: string;
-  high?: string;
-  low?: string;
-  previous_close?: string;
-  change?: string;
-  percent_change?: string;
-  datetime?: string;
-  is_market_open?: boolean;
-  code?: number;
-  message?: string;
-}
-
 interface TwelveDataTimeSeriesValue {
   datetime: string;
   open: string;
@@ -72,6 +58,11 @@ export interface MarketSnapshot {
 }
 
 const TWELVE_DATA_BASE_URL = "https://api.twelvedata.com";
+const LIVE_SNAPSHOT_CACHE_TTL_MS = 60_000;
+const liveSnapshotCache = new Map<
+  string,
+  { snapshot: MarketSnapshot; expiresAt: number }
+>();
 
 function getTimeframeMinutes(timeframe: MarketTimeframe) {
   switch (timeframe) {
@@ -707,6 +698,13 @@ export async function fetchMarketSnapshot(
   pair: CurrencyPair,
   timeframe: MarketTimeframe = "15min"
 ): Promise<MarketSnapshot> {
+  const cacheKey = `${pair}:${timeframe}`;
+  const now = Date.now();
+  const cached = liveSnapshotCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.snapshot;
+  }
+
   const apiKey = process.env.TWELVE_DATA_API_KEY;
   const precision = getPricePrecision(pair);
 
@@ -715,11 +713,6 @@ export async function fetchMarketSnapshot(
   }
 
   const symbol = pairToSymbol(pair);
-  const quoteUrl = new URL(`${TWELVE_DATA_BASE_URL}/quote`);
-  quoteUrl.searchParams.set("symbol", symbol);
-  quoteUrl.searchParams.set("interval", timeframe);
-  quoteUrl.searchParams.set("apikey", apiKey);
-
   const timeSeriesUrl = new URL(`${TWELVE_DATA_BASE_URL}/time_series`);
   timeSeriesUrl.searchParams.set("symbol", symbol);
   timeSeriesUrl.searchParams.set("interval", timeframe);
@@ -727,52 +720,39 @@ export async function fetchMarketSnapshot(
   timeSeriesUrl.searchParams.set("apikey", apiKey);
 
   try {
-    const [quoteResponse, timeSeriesResponse, yesterdayPerformance] = await Promise.all([
-      fetch(quoteUrl, {
-        headers: { Accept: "application/json" },
-        next: { revalidate: 60 },
-      }),
-      fetch(timeSeriesUrl, {
-        headers: { Accept: "application/json" },
-        next: { revalidate: 60 },
-      }),
-      fetchYesterdayPerformanceFromProvider(symbol, apiKey, precision).catch((error) => {
-        console.error("Yesterday performance fetch failed:", error);
-        return undefined;
-      }),
-    ]);
+    const timeSeriesResponse = await fetch(timeSeriesUrl, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 60 },
+    });
 
-    if (!quoteResponse.ok || !timeSeriesResponse.ok) {
-      throw new Error("Market provider request failed.");
+    if (!timeSeriesResponse.ok) {
+      throw new Error(`Market provider request failed with status ${timeSeriesResponse.status}.`);
     }
 
-    const quotePayload = (await quoteResponse.json()) as TwelveDataQuoteResponse;
     const timeSeriesPayload = (await timeSeriesResponse.json()) as TwelveDataTimeSeriesResponse;
 
-    if (quotePayload.code || timeSeriesPayload.code || quotePayload.message || timeSeriesPayload.message) {
-      throw new Error(quotePayload.message || timeSeriesPayload.message || "Market provider returned an error.");
+    if (timeSeriesPayload.code || timeSeriesPayload.message) {
+      throw new Error(timeSeriesPayload.message || "Market provider returned an error.");
     }
 
     const bars = formatBars(timeSeriesPayload.values);
-    const price = toNumber(quotePayload.close) ?? bars[bars.length - 1]?.close;
-    const open = toNumber(quotePayload.open) ?? bars[0]?.open;
-    const high = toNumber(quotePayload.high) ?? Math.max(...bars.map((bar) => bar.high));
-    const low = toNumber(quotePayload.low) ?? Math.min(...bars.map((bar) => bar.low));
-
-    if (
-      typeof price !== "number" ||
-      typeof open !== "number" ||
-      typeof high !== "number" ||
-      typeof low !== "number" ||
-      bars.length === 0
-    ) {
+    if (bars.length === 0) {
       throw new Error("Market provider response was incomplete.");
     }
 
-    const fallbackYesterday =
-      yesterdayPerformance || buildFallbackYesterdayPerformance(pair, bars[bars.length - 2]?.close ?? price, precision);
+    const latestBar = bars[bars.length - 1];
+    const previousBar = bars.length > 1 ? bars[bars.length - 2] : latestBar;
+    const price = latestBar.close;
+    const open = bars[0].open;
+    const high = Math.max(...bars.map((bar) => bar.high));
+    const low = Math.min(...bars.map((bar) => bar.low));
+    const change = Number((price - previousBar.close).toFixed(precision));
+    const percentChange = Number(
+      ((((price - previousBar.close) / Math.max(Math.abs(previousBar.close), Number.EPSILON)) * 100) || 0).toFixed(2)
+    );
+    const fallbackYesterday = buildFallbackYesterdayPerformance(pair, previousBar.close, precision);
 
-    return {
+    const snapshot: MarketSnapshot = {
       pair,
       symbol,
       timeframe,
@@ -780,17 +760,26 @@ export async function fetchMarketSnapshot(
       open,
       high,
       low,
-      previousClose: toNumber(quotePayload.previous_close),
-      change: toNumber(quotePayload.change),
-      percentChange: toNumber(quotePayload.percent_change),
-      asOf: new Date(quotePayload.datetime || bars[bars.length - 1].time).toISOString(),
-      isMarketOpen: quotePayload.is_market_open,
+      previousClose: previousBar.close,
+      change,
+      percentChange,
+      asOf: new Date(latestBar.time).toISOString(),
       yesterday: fallbackYesterday,
       bars,
       source: "twelvedata",
       fallback: false,
     };
+
+    liveSnapshotCache.set(cacheKey, {
+      snapshot,
+      expiresAt: Date.now() + LIVE_SNAPSHOT_CACHE_TTL_MS,
+    });
+
+    return snapshot;
   } catch (error) {
+    if (cached?.snapshot) {
+      return cached.snapshot;
+    }
     console.error("Market snapshot fetch failed, using fallback snapshot:", error);
     return buildFallbackSnapshot(pair, timeframe);
   }
