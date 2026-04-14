@@ -1,0 +1,29 @@
+name: Trade Alert Scanner
+
+on:
+  schedule:
+    # Every 15 minutes during London (07:00-16:00 UTC) and New York (12:00-21:00 UTC) sessions
+    - cron: "0,15,30,45 7-20 * * 1-5"
+  workflow_dispatch: # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger trade alert scanner
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://www.forexmb.us/api/cron/trade-alerts")
+
+          echo "Response status: $response"
+
+          if [ "$response" != "200" ]; then
+            echo "Scanner returned non-200 status: $response"
+            exit 1
+          fi
+
+          echo "Scanner completed successfully."
