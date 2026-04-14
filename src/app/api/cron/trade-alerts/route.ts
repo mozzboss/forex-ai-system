@@ -13,7 +13,7 @@ import {
   listAccounts,
   listUsersWithAlertDestinations,
 } from "@/lib/server/persistence";
-import { formatDecisionSignalAlert, isTelegramConfigured } from "@/lib/telegram/service";
+import { formatDecisionSignalAlert, formatReadyAlert, isTelegramConfigured } from "@/lib/telegram/service";
 import type { CurrencyPair, TradingSession } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -229,6 +229,14 @@ export async function GET(req: NextRequest) {
     process.env.TRADE_ALERT_MIN_SCORE,
     8
   );
+  const minReadyScore = parsePositiveInt(
+    process.env.TRADE_ALERT_MIN_READY_SCORE,
+    7
+  );
+  const readyCooldownMinutes = parsePositiveInt(
+    process.env.TRADE_ALERT_READY_COOLDOWN_MINUTES,
+    60
+  );
   const allowedSessions = parseAllowedSessions();
 
   const summary = {
@@ -287,69 +295,89 @@ export async function GET(req: NextRequest) {
           const enrichedMarketData = await buildEnrichedMarketData(pair);
           const analysis = await analyzeMarket(pair, accounts, enrichedMarketData);
           const decisionSignal = derivePairDecisionSignal(analysis);
+          const session = analysis.sessionAndNews.currentSession;
+          const score = analysis.finalDecision.score;
 
-          if (decisionSignal.mode !== ALERT_MODE) {
-            summary.noSignal += 1;
+          // ── TAKE_TRADE path ──────────────────────────────────────────
+          if (decisionSignal.mode === ALERT_MODE) {
+            if (score < minScore) {
+              summary.blockedByScore += 1;
+            } else if (!allowedSessions.has(session)) {
+              summary.blockedBySession += 1;
+            } else if (!accounts.some((account) => shouldAllowTrade(analysis, account).allowed)) {
+              summary.blockedByDenials += 1;
+            } else {
+              const cacheKey = getCooldownCacheKey(["decision", ALERT_MODE, user.id, pair]);
+              if (await hasActiveCooldown(cacheKey)) {
+                summary.cooldownSkips += 1;
+                userCooldownSkips += 1;
+              } else {
+                const message = formatDecisionSignalAlert(pair, decisionSignal);
+                const delivery = await deliverAlert({
+                  chatId: user.chatId,
+                  email: user.email,
+                  subject: `TRADE NOW: ${pair}`,
+                  message,
+                });
+
+                await markCooldown(
+                  cacheKey,
+                  { userId: user.id, pair, mode: decisionSignal.mode, score, session, sentAt: new Date().toISOString() },
+                  cooldownMinutes
+                );
+
+                summary.alertsSent += 1;
+                userAlertsSent += 1;
+                if (delivery.channel === "telegram") {
+                  summary.telegramAlertsSent += 1;
+                } else {
+                  summary.emailAlertsSent += 1;
+                }
+              }
+            }
+            // TAKE_TRADE processed — skip READY check for this pair
             continue;
           }
 
-          if (analysis.finalDecision.score < minScore) {
-            summary.blockedByScore += 1;
-            continue;
-          }
+          summary.noSignal += 1;
 
-          if (!allowedSessions.has(analysis.sessionAndNews.currentSession)) {
-            summary.blockedBySession += 1;
-            continue;
-          }
+          // ── READY alert: setup forming, get to your desk ─────────────
+          if (
+            analysis.entryStatus.status === "READY" &&
+            score >= minReadyScore &&
+            allowedSessions.has(session)
+          ) {
+            const readyKey = getCooldownCacheKey(["ready", user.id, pair]);
+            if (!(await hasActiveCooldown(readyKey))) {
+              const readyMessage = formatReadyAlert(
+                pair,
+                score,
+                analysis.entryStatus.reason,
+                analysis.entryStatus.whatMustHappenNext
+              );
+              const readyDelivery = await deliverAlert({
+                chatId: user.chatId,
+                email: user.email,
+                subject: `Setup Forming: ${pair}`,
+                message: readyMessage,
+              });
 
-          const hasTradableAccount = accounts.some(
-            (account) => shouldAllowTrade(analysis, account).allowed
-          );
-          if (!hasTradableAccount) {
-            summary.blockedByDenials += 1;
-            continue;
-          }
+              await markCooldown(
+                readyKey,
+                { userId: user.id, pair, score, session, sentAt: new Date().toISOString() },
+                readyCooldownMinutes
+              );
 
-          const cacheKey = getCooldownCacheKey([
-            "decision",
-            ALERT_MODE,
-            user.id,
-            pair,
-          ]);
-          if (await hasActiveCooldown(cacheKey)) {
-            summary.cooldownSkips += 1;
-            userCooldownSkips += 1;
-            continue;
-          }
-
-          const message = formatDecisionSignalAlert(pair, decisionSignal);
-          const delivery = await deliverAlert({
-            chatId: user.chatId,
-            email: user.email,
-            subject: `TRADE NOW: ${pair}`,
-            message,
-          });
-
-          await markCooldown(
-            cacheKey,
-            {
-              userId: user.id,
-              pair,
-              mode: decisionSignal.mode,
-              score: analysis.finalDecision.score,
-              session: analysis.sessionAndNews.currentSession,
-              sentAt: new Date().toISOString(),
-            },
-            cooldownMinutes
-          );
-
-          summary.alertsSent += 1;
-          userAlertsSent += 1;
-          if (delivery.channel === "telegram") {
-            summary.telegramAlertsSent += 1;
-          } else {
-            summary.emailAlertsSent += 1;
+              summary.alertsSent += 1;
+              userAlertsSent += 1;
+              if (readyDelivery.channel === "telegram") {
+                summary.telegramAlertsSent += 1;
+              } else {
+                summary.emailAlertsSent += 1;
+              }
+            } else {
+              summary.cooldownSkips += 1;
+            }
           }
         } catch (error) {
           summary.errors.push(
@@ -429,6 +457,8 @@ export async function GET(req: NextRequest) {
       maxPairsPerUser,
       cooldownMinutes,
       minScore,
+      minReadyScore,
+      readyCooldownMinutes,
       allowedSessions: Array.from(allowedSessions),
       heartbeatHours,
       failureCooldownMinutes,

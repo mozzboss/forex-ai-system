@@ -213,6 +213,16 @@ export function formatDecisionSignalAlert(pair: CurrencyPair, signal: PairDecisi
   ].join("\n");
 }
 
+export function formatReadyAlert(pair: CurrencyPair, score: number, reason: string, whatNext: string): string {
+  return [
+    `Setup Forming: ${pair}`,
+    `AI score ${score}/10 — structure is present but entry is not yet confirmed.`,
+    reason,
+    `Next: ${whatNext}`,
+    "Get to your desk. Do not enter until status is CONFIRMED.",
+  ].join("\n");
+}
+
 export function formatRiskAlert(accountName: string, reason: string) {
   return [
     "Risk Alert",

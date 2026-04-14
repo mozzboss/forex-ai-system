@@ -16,6 +16,7 @@ interface TradeManagerProps {
 }
 
 interface TradeDraft {
+  closePrice: string;
   pnl: string;
   pipsPnl: string;
   notes: string;
@@ -30,6 +31,7 @@ interface TradeFeedback {
 
 function getDefaultDraft(trade: Trade): TradeDraft {
   return {
+    closePrice: "",
     pnl: typeof trade.pnl === "number" ? trade.pnl.toString() : "",
     pipsPnl: typeof trade.pipsPnl === "number" ? trade.pipsPnl.toString() : "",
     notes: trade.notes || "",
@@ -41,6 +43,45 @@ function getDefaultDraft(trade: Trade): TradeDraft {
 function toNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+// USD_BASE_PAIRS: USD is the first currency — price goes up when USD strengthens
+const USD_BASE_PAIRS = ["USDJPY", "USDCHF", "USDCAD"];
+
+function calcClosePricePnl(
+  pair: string,
+  direction: "LONG" | "SHORT",
+  entryPrice: number,
+  closePrice: number,
+  lotSize: number
+): { pnl: number; pips: number } {
+  const dir = direction === "LONG" ? 1 : -1;
+  const diff = closePrice - entryPrice;
+
+  let pnl: number;
+  let pips: number;
+
+  if (pair === "XAUUSD") {
+    // 1 standard lot = 100 oz; price in USD per oz
+    pnl = diff * dir * lotSize * 100;
+    pips = diff * dir * 10; // 1 pip = $0.1 movement
+  } else if (pair.includes("JPY")) {
+    // pip = 0.01; 1 standard lot = 100,000 units
+    pips = diff * dir * 100;
+    pnl = USD_BASE_PAIRS.includes(pair)
+      ? diff * dir * lotSize * 100000 / closePrice
+      : diff * dir * lotSize * 1000; // approx for JPY-quoted pairs
+  } else if (USD_BASE_PAIRS.includes(pair)) {
+    // USDCHF, USDCAD: counter currency is not USD, convert back
+    pips = diff * dir * 10000;
+    pnl = diff * dir * lotSize * 100000 / closePrice;
+  } else {
+    // EURUSD, GBPUSD, AUDUSD, NZDUSD: counter is USD, direct
+    pips = diff * dir * 10000;
+    pnl = diff * dir * lotSize * 100000;
+  }
+
+  return { pnl: Math.round(pnl * 100) / 100, pips: Math.round(pips * 10) / 10 };
 }
 
 export function TradeManager({ trades, accounts, refreshing = false, onRefresh }: TradeManagerProps) {
@@ -67,14 +108,20 @@ export function TradeManager({ trades, accounts, refreshing = false, onRefresh }
   const getDraft = (trade: Trade) => drafts[trade.id] || getDefaultDraft(trade);
 
   const setDraftValue = (trade: Trade, field: keyof TradeDraft, value: string) => {
-    setDrafts((current) => ({
-      ...current,
-      [trade.id]: {
-        ...getDefaultDraft(trade),
-        ...current[trade.id],
-        [field]: value,
-      },
-    }));
+    setDrafts((current) => {
+      const base = { ...getDefaultDraft(trade), ...current[trade.id], [field]: value };
+
+      if (field === "closePrice") {
+        const close = toNumber(value);
+        if (typeof close === "number") {
+          const calc = calcClosePricePnl(trade.pair, trade.direction, trade.entryPrice, close, trade.lotSize);
+          base.pnl = calc.pnl.toString();
+          base.pipsPnl = calc.pips.toString();
+        }
+      }
+
+      return { ...current, [trade.id]: base };
+    });
   };
 
   const setFeedback = (tradeId: string, tone: "success" | "error", message: string) => {
@@ -249,17 +296,25 @@ export function TradeManager({ trades, accounts, refreshing = false, onRefresh }
                     {trade.status === "open" ? (
                       <>
                         <InputField
-                          label="Realized P&L"
-                          value={draft.pnl}
-                          onChange={(value) => setDraftValue(trade, "pnl", value)}
-                          placeholder="125.50"
+                          label="Close Price (auto-fills P&L)"
+                          value={draft.closePrice}
+                          onChange={(value) => setDraftValue(trade, "closePrice", value)}
+                          placeholder={trade.takeProfit.toFixed(getPricePrecision(trade.pair))}
                         />
-                        <InputField
-                          label="Pips"
-                          value={draft.pipsPnl}
-                          onChange={(value) => setDraftValue(trade, "pipsPnl", value)}
-                          placeholder="18.4"
-                        />
+                        <div>
+                          <div className="text-sm text-gray-400">Realized P&L</div>
+                          <input
+                            value={draft.pnl}
+                            onChange={(event) => setDraftValue(trade, "pnl", event.target.value)}
+                            placeholder="or enter manually"
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-surface-light px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+                          />
+                          {draft.closePrice && draft.pnl ? (
+                            <div className={`mt-1 text-xs font-medium ${toNumber(draft.pnl) !== undefined && (toNumber(draft.pnl) ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {toNumber(draft.pnl) !== undefined ? `Est. ${(toNumber(draft.pnl) ?? 0) >= 0 ? "+" : ""}${draft.pnl} | ${draft.pipsPnl} pips` : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </>
                     ) : null}
 
@@ -269,14 +324,21 @@ export function TradeManager({ trades, accounts, refreshing = false, onRefresh }
                       onChange={(value) => setDraftValue(trade, "notes", value)}
                       placeholder="Execution notes, SL move, or reason for cancel."
                     />
-                    <InputField
-                      label={trade.status === "open" ? "Discipline Score" : "Review Note"}
-                      value={trade.status === "open" ? draft.disciplineScore : draft.review}
-                      onChange={(value) =>
-                        setDraftValue(trade, trade.status === "open" ? "disciplineScore" : "review", value)
-                      }
-                      placeholder={trade.status === "open" ? "1-10" : "Why the pending trade was cancelled."}
-                    />
+                    {trade.status === "open" ? (
+                      <InputField
+                        label="Discipline Score (1–10)"
+                        value={draft.disciplineScore}
+                        onChange={(value) => setDraftValue(trade, "disciplineScore", value)}
+                        placeholder="8"
+                      />
+                    ) : (
+                      <InputField
+                        label="Review Note"
+                        value={draft.review}
+                        onChange={(value) => setDraftValue(trade, "review", value)}
+                        placeholder="Why the pending trade was cancelled."
+                      />
+                    )}
                   </div>
 
                   {trade.status === "open" ? (
