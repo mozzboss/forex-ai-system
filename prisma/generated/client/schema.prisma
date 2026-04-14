@@ -74,6 +74,7 @@ model User {
   trades     Trade[]
   journal    JournalEntry[]
   dailyPlans DailyPlan[]
+  alertLogs  AlertLog[]
 }
 
 model TradingAccount {
@@ -106,6 +107,7 @@ model Trade {
   accountId       String         @db.Uuid
   userId          String         @db.Uuid
   externalRef     String?        @unique
+  alertLogId      String?        @db.Uuid
   pair            String
   direction       TradeDirection
   setupType       SetupType
@@ -130,6 +132,7 @@ model Trade {
 
   account        TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertLog       AlertLog?      @relation(fields: [alertLogId], references: [id], onDelete: SetNull)
   journalEntries JournalEntry[]
 
   @@index([accountId])
@@ -138,6 +141,7 @@ model Trade {
   @@index([status])
   @@index([accountId, status])
   @@index([userId, createdAt])
+  @@index([alertLogId])
 }
 
 model JournalEntry {
@@ -198,6 +202,29 @@ model NewsEvent {
   @@index([time])
   @@index([currency])
   @@index([impact])
+}
+
+// Stores every TAKE_TRADE and READY alert the cron fires.
+// Linked to trades via Trade.alertLogId to measure signal → outcome accuracy.
+model AlertLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  pair      String
+  alertType String // "trade_now" | "ready"
+  score     Int
+  session   String
+  direction String? // "LONG" | "SHORT" when available from the analysis
+  channel   String // "telegram" | "email"
+  sentAt    DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades Trade[]
+
+  @@index([userId])
+  @@index([pair])
+  @@index([sentAt])
+  @@index([userId, sentAt])
+  @@index([alertType])
 }
 
 model AnalysisCache {

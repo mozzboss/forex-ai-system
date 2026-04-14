@@ -87,7 +87,14 @@ function getTimeframeMinutes(timeframe: MarketTimeframe) {
 }
 
 function getOutputSize(timeframe: MarketTimeframe) {
-  return timeframe === "4h" ? "10" : "12";
+  // 50 H4 bars ≈ 8 days — enough to identify HTF order blocks and a real weekly range
+  // 60 M15 bars ≈ 15 hours — enough for session structure and displacement candle detection
+  switch (timeframe) {
+    case "4h":   return "50";
+    case "1h":   return "72";
+    case "15min": return "60";
+    case "5min":  return "48";
+  }
 }
 
 function pairToSymbol(pair: CurrencyPair) {
@@ -336,6 +343,10 @@ function formatBarsTable(bars: MarketBar[], precision: number): string {
 }
 
 function calcPremiumDiscount(bars: MarketBar[]): { mid: number; high: number; low: number } {
+  if (bars.length === 0) {
+    return { high: 0, low: 0, mid: 0 };
+  }
+
   const high = Math.max(...bars.map((b) => b.high));
   const low = Math.min(...bars.map((b) => b.low));
   return { high, low, mid: (high + low) / 2 };
@@ -354,6 +365,137 @@ export interface MultiTimeframeContext {
 // USD is the base in these pairs (DXY up = pair price up = USD stronger)
 const USD_BASE_PAIRS = ["USDJPY", "USDCHF", "USDCAD"];
 
+type PairBarsSnapshot = {
+  bars: MarketBar[];
+  fallback: boolean;
+};
+
+type TwelveDataBatchTimeSeriesResponse = {
+  status?: string;
+  code?: number;
+  message?: string;
+  [key: string]: unknown;
+};
+
+function normalizeSymbol(value: string) {
+  return value.toUpperCase().replace("/", "");
+}
+
+function coerceTimeSeriesPayload(
+  raw: unknown
+): TwelveDataTimeSeriesResponse | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const obj = raw as Record<string, unknown>;
+  if ("values" in obj || "code" in obj || "message" in obj) {
+    return obj as unknown as TwelveDataTimeSeriesResponse;
+  }
+
+  return null;
+}
+
+function pickBatchTimeSeriesForSymbol(
+  payload: TwelveDataBatchTimeSeriesResponse,
+  symbol: string
+): TwelveDataTimeSeriesResponse | null {
+  const topLevel = coerceTimeSeriesPayload(payload);
+  if (topLevel?.values || topLevel?.code || topLevel?.message) {
+    return topLevel;
+  }
+
+  const directKeys = [symbol, symbol.replace("/", ""), symbol.replace("/", "_")];
+  for (const key of directKeys) {
+    const direct = coerceTimeSeriesPayload(payload[key]);
+    if (direct) {
+      return direct;
+    }
+  }
+
+  const normalized = normalizeSymbol(symbol);
+  for (const [key, value] of Object.entries(payload)) {
+    if (key === "status" || key === "code" || key === "message" || key === "meta") {
+      continue;
+    }
+
+    if (normalizeSymbol(key) === normalized) {
+      const matched = coerceTimeSeriesPayload(value);
+      if (matched) {
+        return matched;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getFallbackBars(pair: CurrencyPair, timeframe: MarketTimeframe) {
+  return buildFallbackSnapshot(pair, timeframe).bars;
+}
+
+async function fetchBatchPairBars(
+  pairs: CurrencyPair[],
+  timeframe: Extract<MarketTimeframe, "4h" | "15min">
+): Promise<Map<CurrencyPair, PairBarsSnapshot>> {
+  const uniquePairs = Array.from(new Set(pairs));
+  const results = new Map<CurrencyPair, PairBarsSnapshot>();
+  if (uniquePairs.length === 0) {
+    return results;
+  }
+
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  if (!apiKey) {
+    for (const pair of uniquePairs) {
+      results.set(pair, { bars: getFallbackBars(pair, timeframe), fallback: true });
+    }
+    return results;
+  }
+
+  const url = new URL(`${TWELVE_DATA_BASE_URL}/time_series`);
+  url.searchParams.set("symbol", uniquePairs.map(pairToSymbol).join(","));
+  url.searchParams.set("interval", timeframe);
+  url.searchParams.set("outputsize", getOutputSize(timeframe));
+  url.searchParams.set("apikey", apiKey);
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Batch ${timeframe} request failed with status ${response.status}.`);
+    }
+
+    const payload = (await response.json()) as TwelveDataBatchTimeSeriesResponse;
+    if (payload.code || payload.message) {
+      throw new Error(payload.message || `Batch ${timeframe} provider error.`);
+    }
+
+    for (const pair of uniquePairs) {
+      const symbol = pairToSymbol(pair);
+      const series = pickBatchTimeSeriesForSymbol(payload, symbol);
+
+      if (series?.code || series?.message || !series?.values?.length) {
+        results.set(pair, { bars: getFallbackBars(pair, timeframe), fallback: true });
+      } else {
+        results.set(pair, { bars: formatBars(series.values), fallback: false });
+      }
+    }
+  } catch (error) {
+    console.error(`Batch ${timeframe} bars fetch failed:`, error);
+  }
+
+  for (const pair of uniquePairs) {
+    if (!results.has(pair)) {
+      results.set(pair, { bars: getFallbackBars(pair, timeframe), fallback: true });
+    }
+  }
+
+  return results;
+}
+
 async function fetchDXYBars(): Promise<{ bars: MarketBar[]; fallback: boolean }> {
   const apiKey = process.env.TWELVE_DATA_API_KEY;
   if (!apiKey) return { bars: [], fallback: true };
@@ -362,7 +504,7 @@ async function fetchDXYBars(): Promise<{ bars: MarketBar[]; fallback: boolean }>
     const url = new URL(`${TWELVE_DATA_BASE_URL}/time_series`);
     url.searchParams.set("symbol", "DXY");
     url.searchParams.set("interval", "4h");
-    url.searchParams.set("outputsize", "10");
+    url.searchParams.set("outputsize", "20");
     url.searchParams.set("apikey", apiKey);
 
     const response = await fetch(url, {
@@ -435,39 +577,33 @@ function analyzeDXYCorrelation(
   ].join("\n");
 }
 
-export async function fetchMultiTimeframeContext(pair: CurrencyPair): Promise<MultiTimeframeContext> {
+function buildMultiTimeframeContextFromBars(input: {
+  pair: CurrencyPair;
+  h4Bars: MarketBar[];
+  m15Bars: MarketBar[];
+  dxyBars: MarketBar[];
+  fallback: boolean;
+}): MultiTimeframeContext {
+  const { pair, h4Bars, m15Bars, dxyBars, fallback } = input;
   const precision = pair.includes("JPY") ? 3 : pair === "XAUUSD" ? 2 : 5;
+  const currentPrice =
+    m15Bars[m15Bars.length - 1]?.close ??
+    h4Bars[h4Bars.length - 1]?.close ??
+    0;
 
-  // Fetch pair timeframes + DXY in parallel
-  const [daily, h4, m15, dxyResult] = await Promise.allSettled([
-    fetchMarketSnapshot(pair, "4h"),    // TwelveData free tier: use 4h as proxy for daily structure
-    fetchMarketSnapshot(pair, "4h"),    // H4 session structure
-    fetchMarketSnapshot(pair, "15min"), // M15 entry trigger
-    fetchDXYBars(),                     // DXY correlation filter
-  ]);
-
-  const [dailySnapshot, h4Snapshot, m15Snapshot] = [daily, h4, m15].map((r) =>
-    r.status === "fulfilled" ? r.value : null
-  );
-  const dxy = dxyResult.status === "fulfilled" ? dxyResult.value : { bars: [], fallback: true };
-
-  const fallback = [dailySnapshot, h4Snapshot, m15Snapshot].some((s) => s?.fallback);
-  const currentPrice = m15Snapshot?.price ?? h4Snapshot?.price ?? dailySnapshot?.price ?? 0;
-
-  // Premium/discount from H4 range (best proxy for weekly range with free API)
-  const h4Bars = h4Snapshot?.bars ?? [];
   const pd = calcPremiumDiscount(h4Bars);
   const currentZone: "premium" | "discount" | "midrange" =
-    currentPrice > pd.mid + (pd.high - pd.mid) * 0.25
-      ? "premium"
-      : currentPrice < pd.mid - (pd.mid - pd.low) * 0.25
-        ? "discount"
-        : "midrange";
+    pd.high === pd.low
+      ? "midrange"
+      : currentPrice > pd.mid + (pd.high - pd.mid) * 0.25
+        ? "premium"
+        : currentPrice < pd.mid - (pd.mid - pd.low) * 0.25
+          ? "discount"
+          : "midrange";
 
-  const atrM15 = calcATR(m15Snapshot?.bars ?? []);
+  const atrM15 = calcATR(m15Bars);
   const atrH4 = calcATR(h4Bars);
-
-  const dxySection = analyzeDXYCorrelation(pair, dxy.bars);
+  const dxySection = analyzeDXYCorrelation(pair, dxyBars);
 
   const lines: string[] = [
     `=== MULTI-TIMEFRAME MARKET DATA: ${pair} ===`,
@@ -481,25 +617,27 @@ export async function fetchMultiTimeframeContext(pair: CurrencyPair): Promise<Mu
     `--- PREMIUM/DISCOUNT ZONE (H4 range) ---`,
     `Range high: ${pd.high.toFixed(precision)} | Range low: ${pd.low.toFixed(precision)} | Midpoint (50%): ${pd.mid.toFixed(precision)}`,
     `Current price is in: ${currentZone.toUpperCase()} zone`,
-    "(PREMIUM = above 50% of range → institutional selling area. DISCOUNT = below 50% → institutional buying area.)",
+    "(PREMIUM = above 50% of range -> institutional selling area. DISCOUNT = below 50% -> institutional buying area.)",
     "",
   ];
 
-  if (h4Snapshot?.bars?.length) {
-    lines.push(`--- H4 BARS (session structure — last ${h4Snapshot.bars.length} candles) ---`);
-    lines.push(formatBarsTable(h4Snapshot.bars, precision));
+  if (h4Bars.length) {
+    lines.push(`--- H4 BARS (HTF structure - last ${h4Bars.length} candles, oldest->newest) ---`);
+    lines.push("Scan for: Order Blocks (last bearish before bullish impulse / last bullish before bearish), FVGs (3-candle gaps), Equal Highs/Lows (liquidity pools).");
+    lines.push(formatBarsTable(h4Bars, precision));
     lines.push("");
   }
 
-  if (m15Snapshot?.bars?.length) {
-    lines.push(`--- M15 BARS (entry trigger — last ${m15Snapshot.bars.length} candles) ---`);
-    lines.push(formatBarsTable(m15Snapshot.bars, precision));
+  if (m15Bars.length) {
+    lines.push(`--- M15 BARS (entry trigger - last ${m15Bars.length} candles, oldest->newest) ---`);
+    lines.push("Scan for: Displacement candle (strong close through swing, body > avg), liquidity sweep (brief pierce of equal high/low then rejection).");
+    lines.push(formatBarsTable(m15Bars, precision));
     lines.push("");
   }
 
   lines.push(
     fallback
-      ? "NOTE: Data source is synthetic (live feed unavailable). Structure observations are illustrative only — do not score above 5 on fallback data."
+      ? "NOTE: Data source is synthetic (live feed unavailable). Structure observations are illustrative only - do not score above 5 on fallback data."
       : "Use H4 bars to identify Order Blocks and Fair Value Gaps. Use M15 bars to confirm entry trigger."
   );
 
@@ -512,6 +650,57 @@ export async function fetchMultiTimeframeContext(pair: CurrencyPair): Promise<Mu
     formattedContext: lines.join("\n"),
     fallback,
   };
+}
+
+export async function fetchMultiTimeframeContexts(
+  pairs: CurrencyPair[]
+): Promise<Map<CurrencyPair, MultiTimeframeContext>> {
+  const uniquePairs = Array.from(new Set(pairs));
+  const contexts = new Map<CurrencyPair, MultiTimeframeContext>();
+  if (uniquePairs.length === 0) {
+    return contexts;
+  }
+
+  const [h4Map, m15Map, dxyResult] = await Promise.all([
+    fetchBatchPairBars(uniquePairs, "4h"),
+    fetchBatchPairBars(uniquePairs, "15min"),
+    fetchDXYBars(),
+  ]);
+
+  for (const pair of uniquePairs) {
+    const h4 = h4Map.get(pair) ?? { bars: getFallbackBars(pair, "4h"), fallback: true };
+    const m15 = m15Map.get(pair) ?? { bars: getFallbackBars(pair, "15min"), fallback: true };
+    const fallback = h4.fallback || m15.fallback || dxyResult.fallback;
+
+    contexts.set(
+      pair,
+      buildMultiTimeframeContextFromBars({
+        pair,
+        h4Bars: h4.bars,
+        m15Bars: m15.bars,
+        dxyBars: dxyResult.bars,
+        fallback,
+      })
+    );
+  }
+
+  return contexts;
+}
+
+export async function fetchMultiTimeframeContext(pair: CurrencyPair): Promise<MultiTimeframeContext> {
+  const contexts = await fetchMultiTimeframeContexts([pair]);
+  const context = contexts.get(pair);
+  if (context) {
+    return context;
+  }
+
+  return buildMultiTimeframeContextFromBars({
+    pair,
+    h4Bars: getFallbackBars(pair, "4h"),
+    m15Bars: getFallbackBars(pair, "15min"),
+    dxyBars: [],
+    fallback: true,
+  });
 }
 
 export async function fetchMarketSnapshot(
@@ -606,3 +795,4 @@ export async function fetchMarketSnapshot(
     return buildFallbackSnapshot(pair, timeframe);
   }
 }
+

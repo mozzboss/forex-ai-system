@@ -5,6 +5,7 @@ import { ALL_PAIRS } from "@/config/trading";
 import { generateDailyPlan } from "@/lib/ai/daily-plan";
 import { quickPairCheck } from "@/lib/ai/engine";
 import { fetchEconomicCalendar, formatNewsContextForAnalysis, getPairCurrencies } from "@/lib/market/news";
+import { fetchMultiTimeframeContext } from "@/lib/market/prices";
 import { calculateRisk } from "@/lib/risk/engine";
 import {
   createJournalEntry,
@@ -227,10 +228,11 @@ if (bot) {
       return;
     }
 
-    await ctx.reply(`Checking ${pair}.`);
+    await ctx.reply(`Checking ${pair} — fetching live bars...`);
 
     try {
-      const result = await quickPairCheck(pair);
+      const mtf = await fetchMultiTimeframeContext(pair).catch(() => null);
+      const result = await quickPairCheck(pair, mtf?.formattedContext);
       await ctx.reply(
         [
           `${pair} quick check`,

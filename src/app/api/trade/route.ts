@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
     if (action === "create") {
       const trade = await tradeRouteDeps.createTrade(userId, {
         accountId: parsed.data.accountId,
+        alertLogId: parsed.data.alertLogId,
         pair: parsed.data.pair,
         direction: parsed.data.direction,
         setupType: parsed.data.setupType,

@@ -209,20 +209,38 @@ export async function analyzeMarket(
 }
 
 /**
- * Quick pair check - lighter than full analysis.
+ * Quick pair check — uses real H4 + M15 bar data so the score reflects
+ * actual current price action, not Claude's training-data recall.
  */
 export async function quickPairCheck(
-  pair: CurrencyPair
+  pair: CurrencyPair,
+  marketData?: string
 ): Promise<{ bias: string; score: number; summary: string }> {
+  // If caller didn't pre-fetch, pull real bars now (non-blocking best-effort)
+  let context = marketData;
+  if (!context) {
+    try {
+      const { fetchMultiTimeframeContext } = await import("@/lib/market/prices");
+      const mtf = await fetchMultiTimeframeContext(pair);
+      context = mtf.formattedContext;
+    } catch {
+      // Fall through with no context — still better than nothing
+    }
+  }
+
   const anthropic = getAnthropicClient();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    max_tokens: 512,
     system: SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
-        content: `Quick analysis of ${pair}. Consider macro bias, price structure, and current session. Be honest — most pairs score below 7 right now.\n\nRespond in JSON only: { "bias": "bullish|bearish|neutral", "score": 1-10, "summary": "1-2 sentences covering bias, key level, and whether it is worth watching now" }`,
+        content: [
+          `Quick analysis of ${pair}. Be honest — most pairs score below 7.`,
+          context ? `LIVE MARKET DATA:\n${context}` : "No live market data — base score on macro context only and cap at 5.",
+          `Respond in JSON only: { "bias": "bullish|bearish|neutral", "score": 1-10, "summary": "1-2 sentences: bias, key level to watch, and whether it is worth monitoring now" }`,
+        ].join("\n\n"),
       },
     ],
   });

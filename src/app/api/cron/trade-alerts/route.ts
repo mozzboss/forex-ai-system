@@ -6,7 +6,7 @@ import { deliverAlert, isEmailFallbackConfigured, sendFallbackEmail } from "@/li
 import { derivePairDecisionSignal } from "@/lib/market/decision";
 import { shouldAllowTrade } from "@/lib/market/denial";
 import { fetchEconomicCalendar, formatNewsContextForAnalysis, getPairCurrencies } from "@/lib/market/news";
-import { fetchMultiTimeframeContext } from "@/lib/market/prices";
+import { fetchMultiTimeframeContexts, type MultiTimeframeContext } from "@/lib/market/prices";
 import { prisma } from "@/lib/prisma";
 import {
   getSavedDailyPlan,
@@ -96,10 +96,13 @@ async function getUserScanPairs(userId: string, maxPairs: number): Promise<Curre
   return Array.from(new Set([...planPairs, ...configured])).slice(0, maxPairs);
 }
 
-async function buildEnrichedMarketData(pair: CurrencyPair) {
+async function buildEnrichedMarketData(
+  pair: CurrencyPair,
+  mtfContext?: MultiTimeframeContext
+) {
   try {
-    const [mtfContext, events] = await Promise.all([
-      fetchMultiTimeframeContext(pair),
+    const [resolvedMtfContext, events] = await Promise.all([
+      mtfContext ? Promise.resolve(mtfContext) : fetchMultiTimeframeContexts([pair]).then((map) => map.get(pair)),
       fetchEconomicCalendar({
         currencies: getPairCurrencies(pair),
         limit: 6,
@@ -108,7 +111,8 @@ async function buildEnrichedMarketData(pair: CurrencyPair) {
     ]);
 
     return [
-      mtfContext.formattedContext,
+      resolvedMtfContext?.formattedContext ??
+        `Live market feed for ${pair} is unavailable. Treat confidence as lower until manually verified.`,
       formatNewsContextForAnalysis(events, pair),
     ].join("\n\n");
   } catch (error) {
@@ -119,6 +123,46 @@ async function buildEnrichedMarketData(pair: CurrencyPair) {
 
 function getCooldownCacheKey(parts: string[]) {
   return `cron_alert:${parts.join(":")}`;
+}
+
+function isSessionActiveNow(session: TradingSession, now = new Date()) {
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+
+  const windows: Record<TradingSession, { start: number; end: number }> = {
+    london: { start: 7 * 60, end: 16 * 60 },
+    overlap_lon_ny: { start: 12 * 60, end: 16 * 60 },
+    new_york: { start: 12 * 60, end: 21 * 60 },
+    asia: { start: 0, end: 9 * 60 },
+  };
+  const window = windows[session];
+  if (!window) {
+    return false;
+  }
+  return utcMinutes >= window.start && utcMinutes < window.end;
+}
+
+// Returns minutes until the current session ends.
+// If the model labels an inactive session, keep cooldown very short.
+function minutesUntilSessionEnd(session: TradingSession, now = new Date()): number {
+  if (!isSessionActiveNow(session, now)) {
+    return 15;
+  }
+
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const ends: Record<TradingSession, number> = {
+    london: 16 * 60,
+    overlap_lon_ny: 16 * 60,
+    new_york: 21 * 60,
+    asia: 9 * 60,
+  };
+  const endMinutes = ends[session] ?? 21 * 60;
+  const minsLeft = Math.max(0, endMinutes - utcMinutes);
+
+  if (minsLeft < 10) {
+    return 15;
+  }
+
+  return minsLeft;
 }
 
 async function hasActiveCooldown(cacheKey: string) {
@@ -159,6 +203,35 @@ async function markCooldown(
       },
     }),
   ]);
+}
+
+async function writeAlertLog(input: {
+  userId: string;
+  pair: CurrencyPair;
+  alertType: "trade_now" | "ready";
+  score: number;
+  session: string;
+  direction?: string;
+  channel: string;
+}): Promise<string | null> {
+  try {
+    const log = await prisma.alertLog.create({
+      data: {
+        userId: input.userId,
+        pair: input.pair,
+        alertType: input.alertType,
+        score: input.score,
+        session: input.session,
+        direction: input.direction ?? null,
+        channel: input.channel,
+      },
+      select: { id: true },
+    });
+    return log.id;
+  } catch (error) {
+    console.error("AlertLog write failed:", error);
+    return null;
+  }
 }
 
 function buildHeartbeatMessage(input: {
@@ -271,6 +344,20 @@ export async function GET(req: NextRequest) {
   if (targets.length === 0) {
     summary.warnings.push("No users with alerts enabled were found.");
   }
+  const activePairs = new Set<CurrencyPair>();
+  for (const user of targets) {
+    try {
+      const userPairs = await getUserScanPairs(user.id, maxPairsPerUser);
+      for (const pair of userPairs) {
+        activePairs.add(pair);
+      }
+    } catch {
+      // Ignore prefetch failures; pair context will still be resolved on demand.
+    }
+  }
+  const preloadedContexts = await fetchMultiTimeframeContexts(
+    activePairs.size > 0 ? Array.from(activePairs) : ALL_PAIRS
+  );
 
   for (const user of targets) {
     let userPairsScanned = 0;
@@ -292,7 +379,10 @@ export async function GET(req: NextRequest) {
         userPairsScanned += 1;
 
         try {
-          const enrichedMarketData = await buildEnrichedMarketData(pair);
+          const enrichedMarketData = await buildEnrichedMarketData(
+            pair,
+            preloadedContexts.get(pair)
+          );
           const analysis = await analyzeMarket(pair, accounts, enrichedMarketData);
           const decisionSignal = derivePairDecisionSignal(analysis);
           const session = analysis.sessionAndNews.currentSession;
@@ -320,11 +410,27 @@ export async function GET(req: NextRequest) {
                   message,
                 });
 
+                // Expire the cooldown at session end so the NEXT session
+                // gets a clean slate even if cooldownMinutes would bleed over.
+                const effectiveCooldown = Math.min(
+                  cooldownMinutes,
+                  minutesUntilSessionEnd(session)
+                );
                 await markCooldown(
                   cacheKey,
                   { userId: user.id, pair, mode: decisionSignal.mode, score, session, sentAt: new Date().toISOString() },
-                  cooldownMinutes
+                  effectiveCooldown
                 );
+
+                void writeAlertLog({
+                  userId: user.id,
+                  pair,
+                  alertType: "trade_now",
+                  score,
+                  session,
+                  direction: analysis.tradeSetup?.direction,
+                  channel: delivery.channel,
+                });
 
                 summary.alertsSent += 1;
                 userAlertsSent += 1;
@@ -367,6 +473,16 @@ export async function GET(req: NextRequest) {
                 { userId: user.id, pair, score, session, sentAt: new Date().toISOString() },
                 readyCooldownMinutes
               );
+
+              void writeAlertLog({
+                userId: user.id,
+                pair,
+                alertType: "ready",
+                score,
+                session,
+                direction: analysis.tradeSetup?.direction,
+                channel: readyDelivery.channel,
+              });
 
               summary.alertsSent += 1;
               userAlertsSent += 1;

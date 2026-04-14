@@ -5,8 +5,9 @@ import { useMemo, useState } from "react";
 
 import { EndOfDayReviewCard, PerformanceDrilldown } from "@/components/trade";
 import { Button, Card, CardHeader } from "@/components/ui";
-import { useAccounts, useTrades } from "@/hooks";
-import { formatCurrency } from "@/lib/utils";
+import { useAccounts, useSignals, useTrades } from "@/hooks";
+import type { SignalStats } from "@/hooks/useSignals";
+import { cn, formatCurrency } from "@/lib/utils";
 import { Trade } from "@/types";
 
 type WindowFilter = "30d" | "90d" | "all";
@@ -47,6 +48,7 @@ function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
 export default function PerformancePage() {
   const { accounts, loading: accountsLoading, error: accountsError } = useAccounts();
   const { trades, loading, error, refetch } = useTrades();
+  const { stats: signalStats, loading: signalsLoading } = useSignals(90);
   const [accountFilter, setAccountFilter] = useState("all");
   const [pairFilter, setPairFilter] = useState("all");
   const [windowFilter, setWindowFilter] = useState<WindowFilter>("90d");
@@ -351,6 +353,8 @@ export default function PerformancePage() {
 
       <PerformanceDrilldown trades={filteredTrades} accounts={accounts} />
 
+      <SignalAccuracyCard stats={signalStats} loading={signalsLoading} />
+
       <EndOfDayReviewCard />
     </div>
   );
@@ -404,5 +408,123 @@ function EmptyState({ text }: { text: string }) {
     <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-6 text-sm text-gray-500">
       {text}
     </div>
+  );
+}
+
+function SignalAccuracyCard({
+  stats,
+  loading,
+}: {
+  stats: SignalStats | null;
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <div className="mb-4">
+        <CardHeader className="mb-1">AI Signal Accuracy (Last 90 Days)</CardHeader>
+        <p className="text-sm text-gray-400">
+          Every TAKE_TRADE alert the cron fired, how many became real trades, and the win rate of those trades.
+          This is the only honest measure of whether the system is profitable.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading signal data...</div>
+      ) : !stats || stats.takeTradeSignals === 0 ? (
+        <div className="rounded-xl border border-dashed border-white/10 bg-surface px-4 py-8 text-center text-sm text-gray-500">
+          No TAKE_TRADE signals recorded yet. The cron needs to fire at least once with your Telegram connected.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            <HeadlinePill label="Signals Fired" value={`${stats.takeTradeSignals}`} />
+            <HeadlinePill
+              label="Became Trades"
+              value={`${stats.signalsWithLinkedTrade}`}
+              tone="text-brand-300"
+            />
+            <HeadlinePill
+              label="No Trade Taken"
+              value={`${stats.signalsWithoutLinkedTrade}`}
+              tone="text-amber-400"
+            />
+            <HeadlinePill
+              label="Conversion"
+              value={stats.conversionRate !== null ? `${stats.conversionRate}%` : "-"}
+            />
+            <HeadlinePill
+              label="Signal Win Rate"
+              value={stats.winRate !== null ? `${stats.winRate}%` : "-"}
+              tone={stats.winRate !== null ? (stats.winRate >= 50 ? "text-green-400" : "text-red-400") : "text-white"}
+            />
+            <HeadlinePill
+              label="Signal P&L"
+              value={stats.closedLinkedTrades > 0 ? formatCurrency(stats.totalPnl) : "-"}
+              tone={stats.totalPnl >= 0 ? "text-green-400" : "text-red-400"}
+            />
+            <HeadlinePill label="Ready Alerts" value={`${stats.readySignals}`} tone="text-amber-400" />
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-surface px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Best Signal Pair</div>
+              {stats.bestSignalPair ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="font-semibold text-white">{stats.bestSignalPair.pair}</span>
+                  <span className="text-sm font-semibold text-green-400">
+                    {stats.bestSignalPair.winRate}% WR
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-gray-500">Not enough closed linked trades yet.</div>
+              )}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-surface px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Worst Signal Pair</div>
+              {stats.worstSignalPair ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="font-semibold text-white">{stats.worstSignalPair.pair}</span>
+                  <span className="text-sm font-semibold text-red-400">
+                    {stats.worstSignalPair.winRate}% WR
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-gray-500">Not enough closed linked trades yet.</div>
+              )}
+            </div>
+          </div>
+
+          {stats.byPair.length > 0 && (
+            <div className="mt-6">
+              <div className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-500">By Pair</div>
+              <div className="space-y-2">
+                {stats.byPair.slice(0, 6).map((row) => (
+                  <div key={row.pair} className="flex items-center justify-between rounded-lg border border-white/5 bg-surface px-4 py-3">
+                    <div className="flex items-center gap-4">
+                      <span className="w-20 font-semibold text-white">{row.pair}</span>
+                      <span className="text-xs text-gray-500">{row.signals} signals → {row.trades} closed</span>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <span className={cn(
+                        "text-sm font-semibold",
+                        row.winRate !== null ? (row.winRate >= 50 ? "text-green-400" : "text-red-400") : "text-gray-500"
+                      )}>
+                        {row.winRate !== null ? `${row.winRate}% WR` : "no data"}
+                      </span>
+                      <span className={cn(
+                        "w-20 text-right text-sm font-semibold",
+                        row.pnl >= 0 ? "text-green-400" : "text-red-400"
+                      )}>
+                        {row.trades > 0 ? formatCurrency(row.pnl) : "-"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

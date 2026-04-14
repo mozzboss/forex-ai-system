@@ -158,6 +158,7 @@ exports.Prisma.TradeScalarFieldEnum = {
   accountId: 'accountId',
   userId: 'userId',
   externalRef: 'externalRef',
+  alertLogId: 'alertLogId',
   pair: 'pair',
   direction: 'direction',
   setupType: 'setupType',
@@ -222,6 +223,18 @@ exports.Prisma.NewsEventScalarFieldEnum = {
   previous: 'previous',
   actual: 'actual',
   fetchedAt: 'fetchedAt'
+};
+
+exports.Prisma.AlertLogScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  pair: 'pair',
+  alertType: 'alertType',
+  score: 'score',
+  session: 'session',
+  direction: 'direction',
+  channel: 'channel',
+  sentAt: 'sentAt'
 };
 
 exports.Prisma.AnalysisCacheScalarFieldEnum = {
@@ -298,6 +311,7 @@ exports.Prisma.ModelName = {
   JournalEntry: 'JournalEntry',
   DailyPlan: 'DailyPlan',
   NewsEvent: 'NewsEvent',
+  AlertLog: 'AlertLog',
   AnalysisCache: 'AnalysisCache'
 };
 

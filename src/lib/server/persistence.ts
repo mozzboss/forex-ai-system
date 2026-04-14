@@ -43,6 +43,7 @@ interface TradeFilters {
 
 interface CreateTradeInput {
   accountId?: string;
+  alertLogId?: string;
   pair: CurrencyPair;
   direction: TradeDirection;
   setupType?: SetupType;
@@ -133,6 +134,7 @@ function mapTradeRecord(record: PrismaTrade): AppTrade {
   return {
     id: record.id,
     accountId: record.accountId,
+    alertLogId: record.alertLogId ?? undefined,
     pair: record.pair as CurrencyPair,
     direction: record.direction as TradeDirection,
     setupType: record.setupType as SetupType,
@@ -606,10 +608,40 @@ export async function createTrade(userId: string, input: CreateTradeInput): Prom
       throw new Error(formatDenialMessage(accountDenials));
     }
 
+    let alertLogId: string | undefined;
+    if (input.alertLogId) {
+      const requestedSignal = await tx.alertLog.findFirst({
+        where: {
+          id: input.alertLogId,
+          userId,
+          pair: input.pair,
+          alertType: "trade_now",
+        },
+        select: { id: true },
+      });
+      if (!requestedSignal) {
+        throw new Error("Signal link is invalid for this pair or user.");
+      }
+      alertLogId = requestedSignal.id;
+    } else {
+      const recentSignal = await tx.alertLog.findFirst({
+        where: {
+          userId,
+          pair: input.pair,
+          alertType: "trade_now",
+          trades: { none: {} },
+        },
+        orderBy: { sentAt: "desc" },
+        select: { id: true },
+      });
+      alertLogId = recentSignal?.id;
+    }
+
     const trade = await tx.trade.create({
       data: {
         userId,
         accountId: account.id,
+        alertLogId,
         pair: input.pair,
         direction: input.direction,
         setupType: input.setupType ?? "pullback",

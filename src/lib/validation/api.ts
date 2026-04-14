@@ -26,6 +26,7 @@ const mtStatusSchema = z.enum(mtStatusValues);
 const openTradeSchema = z.object({
   id: z.string().uuid(),
   accountId: z.string().uuid(),
+  alertLogId: z.string().uuid().optional(),
   pair: currencyPairSchema,
   direction: tradeDirectionSchema,
   setupType: setupTypeSchema,
@@ -110,6 +111,7 @@ export const tradeActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
     accountId: z.string().uuid().optional(),
+    alertLogId: z.string().uuid().optional(),
     pair: currencyPairSchema,
     direction: tradeDirectionSchema,
     setupType: setupTypeSchema.optional(),
